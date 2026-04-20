@@ -6,11 +6,8 @@
 #include <sstream>
 #include <string>
 #include <string_view>
-#include <system_error>
 #include <unordered_map>
 #include <utility>
-
-#include <ystdlib/error_handling/Result.hpp>
 
 #include <clp_s/timestamp_parser/TimestampParser.hpp>
 
@@ -21,15 +18,24 @@
 namespace clp_s {
 class TimestampDictionaryWriter {
 public:
-    // Constructors
-    TimestampDictionaryWriter() = default;
+    // Types
+    class OperationFailed : public TraceableException {
+    public:
+        // Constructors
+        OperationFailed(ErrorCode error_code, char const* const filename, int line_number)
+                : TraceableException(error_code, filename, line_number) {}
+    };
 
-    /**
-     * @return A Result containing the new TimestampDictionaryWriter, or an error code indicating the
-     * failure.
-     */
-    [[nodiscard]] static auto create()
-            -> ystdlib::error_handling::Result<TimestampDictionaryWriter>;
+    // Constructors
+    explicit TimestampDictionaryWriter() {
+        auto quoted_patterns_result{timestamp_parser::get_all_default_quoted_timestamp_patterns()};
+        auto numeric_patterns_result{timestamp_parser::get_default_numeric_timestamp_patterns()};
+        if (quoted_patterns_result.has_error() || numeric_patterns_result.has_error()) {
+            throw OperationFailed(ErrorCode::ErrorCodeFailure, __FILENAME__, __LINE__);
+        }
+        m_quoted_timestamp_patterns = std::move(quoted_patterns_result.value());
+        m_numeric_timestamp_patterns = std::move(numeric_patterns_result.value());
+    }
 
     /**
      * Writes the timestamp dictionary to a buffered stream.
@@ -43,41 +49,44 @@ public:
      * @param node_id
      * @param timestamp
      * @param is_json_literal
-     * @return A Result containing a pair of the timestamp in epoch nanoseconds and pattern ID, or an
-     * error code indicating the failure.
+     * @return A pair containing:
+     * - The timestamp in epoch nanoseconds.
+     * - The pattern ID corresponding to the timestamp format.
      */
     [[nodiscard]] auto ingest_string_timestamp(
             std::string_view key,
             int32_t node_id,
             std::string_view timestamp,
             bool is_json_literal
-    ) -> ystdlib::error_handling::Result<std::pair<epochtime_t, uint64_t>>;
+    ) -> std::pair<epochtime_t, uint64_t>;
 
     /**
      * Ingests a numeric JSON entry.
      * @param key
      * @param node_id
      * @param timestamp
-     * @return A Result containing a pair of the timestamp in epoch nanoseconds and pattern ID, or an
-     * error code indicating the failure.
+     * @return A pair containing:
+     * - The timestamp in epoch nanoseconds.
+     * - The pattern ID corresponding to the timestamp format.
      */
     [[nodiscard]] auto
     ingest_numeric_json_timestamp(std::string_view key, int32_t node_id, std::string_view timestamp)
-            -> ystdlib::error_handling::Result<std::pair<epochtime_t, uint64_t>>;
+            -> std::pair<epochtime_t, uint64_t>;
 
     /**
      * Ingests an unknown precision epoch timestamp.
      * @param key
      * @param node_id
      * @param timestamp
-     * @return A Result containing a pair of the timestamp in epoch nanoseconds and pattern ID, or an
-     * error code indicating the failure.
+     * @return A pair containing:
+     * - The timestamp in epoch nanoseconds.
+     * - The pattern ID corresponding to the timestamp format.
      */
     [[nodiscard]] auto ingest_unknown_precision_epoch_timestamp(
             std::string_view key,
             int32_t node_id,
             int64_t timestamp
-    ) -> ystdlib::error_handling::Result<std::pair<epochtime_t, uint64_t>>;
+    ) -> std::pair<epochtime_t, uint64_t>;
 
     /**
      * @return The beginning of this archive's time range as milliseconds since the UNIX epoch

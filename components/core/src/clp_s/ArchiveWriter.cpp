@@ -61,12 +61,6 @@ void ArchiveWriter::open(ArchiveWriterOption const& option) {
     std::string array_dict_path = m_archive_path + constants::cArchiveArrayDictFile;
     m_array_dict = std::make_shared<LogTypeDictionaryWriter>();
     m_array_dict->open(array_dict_path, m_compression_level, UINT64_MAX);
-
-    auto timestamp_dict_result = TimestampDictionaryWriter::create();
-    if (timestamp_dict_result.has_error()) {
-        throw OperationFailed(ErrorCodeFailure, __FILENAME__, __LINE__);
-    }
-    m_timestamp_dict = std::move(timestamp_dict_result.value());
 }
 
 auto ArchiveWriter::close(bool is_split) -> ArchiveStats {

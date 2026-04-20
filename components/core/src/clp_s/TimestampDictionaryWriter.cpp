@@ -13,22 +13,6 @@
 #include <clp_s/TraceableException.hpp>
 
 namespace clp_s {
-auto TimestampDictionaryWriter::create()
-        -> ystdlib::error_handling::Result<TimestampDictionaryWriter> {
-    TimestampDictionaryWriter writer;
-    auto quoted_patterns_result{timestamp_parser::get_all_default_quoted_timestamp_patterns()};
-    if (quoted_patterns_result.has_error()) {
-        return quoted_patterns_result.error();
-    }
-    auto numeric_patterns_result{timestamp_parser::get_default_numeric_timestamp_patterns()};
-    if (numeric_patterns_result.has_error()) {
-        return numeric_patterns_result.error();
-    }
-    writer.m_quoted_timestamp_patterns = std::move(quoted_patterns_result.value());
-    writer.m_numeric_timestamp_patterns = std::move(numeric_patterns_result.value());
-    return writer;
-}
-
 void TimestampDictionaryWriter::write(std::stringstream& stream) {
     write_numeric_value<uint64_t>(stream, m_column_id_to_range.size());
     for (auto const& [id, range] : m_column_id_to_range) {
@@ -60,7 +44,7 @@ auto TimestampDictionaryWriter::ingest_string_timestamp(
         int32_t node_id,
         std::string_view timestamp,
         bool is_json_literal
-) -> ystdlib::error_handling::Result<std::pair<epochtime_t, uint64_t>> {
+) -> std::pair<epochtime_t, uint64_t> {
     auto& [_, timestamp_entry] = *m_column_id_to_range.try_emplace(node_id, key, node_id).first;
 
     // Try parsing the timestamp as one of the previously seen timestamp patterns
@@ -76,7 +60,7 @@ auto TimestampDictionaryWriter::ingest_string_timestamp(
         }
         auto const epoch_timestamp{parsing_result.value().first};
         timestamp_entry.ingest_timestamp(epoch_timestamp);
-        return std::make_pair(epoch_timestamp, pattern_id);
+        return {epoch_timestamp, pattern_id};
     }
 
     // Fall back to consulting all known timestamp patterns
@@ -88,7 +72,7 @@ auto TimestampDictionaryWriter::ingest_string_timestamp(
     )};
     if (false == parsing_result.has_value()) {
         SPDLOG_ERROR("Failed to parse timestamp `{}` against known timestamp patterns.", timestamp);
-        return std::errc::invalid_argument;
+        throw OperationFailed(ErrorCodeFailure, __FILENAME__, __LINE__);
     }
 
     auto const [epoch_timestamp, pattern] = parsing_result.value();
@@ -101,7 +85,7 @@ auto TimestampDictionaryWriter::ingest_string_timestamp(
                 error.category().name(),
                 error.message()
         );
-        return error;
+        throw OperationFailed(ErrorCodeFailure, __FILENAME__, __LINE__);
     }
 
     auto const new_pattern_id{m_next_id++};
@@ -109,14 +93,14 @@ auto TimestampDictionaryWriter::ingest_string_timestamp(
             std::move(quoted_pattern_result.value()),
             new_pattern_id
     );
-    return std::make_pair(epoch_timestamp, new_pattern_id);
+    return {epoch_timestamp, new_pattern_id};
 }
 
 auto TimestampDictionaryWriter::ingest_numeric_json_timestamp(
         std::string_view key,
         int32_t node_id,
         std::string_view timestamp
-) -> ystdlib::error_handling::Result<std::pair<epochtime_t, uint64_t>> {
+) -> std::pair<epochtime_t, uint64_t> {
     auto& [_, timestamp_entry] = *m_column_id_to_range.try_emplace(node_id, key, node_id).first;
 
     for (auto const& [raw_pattern, pattern_and_id] : m_numeric_pattern_to_id) {
@@ -132,7 +116,7 @@ auto TimestampDictionaryWriter::ingest_numeric_json_timestamp(
         }
         auto const epoch_timestamp{parsing_result.value().first};
         timestamp_entry.ingest_timestamp(epoch_timestamp);
-        return std::make_pair(epoch_timestamp, pattern_and_id.second);
+        return {epoch_timestamp, pattern_and_id.second};
     }
 
     auto const optional_parsed_timestamp{timestamp_parser::search_known_timestamp_patterns(
@@ -143,7 +127,7 @@ auto TimestampDictionaryWriter::ingest_numeric_json_timestamp(
     )};
     if (false == optional_parsed_timestamp.has_value()) {
         SPDLOG_ERROR("Failed to parse timestamp `{}` against known timestamp patterns.", timestamp);
-        return std::errc::invalid_argument;
+        throw OperationFailed(ErrorCodeFailure, __FILENAME__, __LINE__);
     }
 
     auto const [epoch_timestamp, pattern] = optional_parsed_timestamp.value();
@@ -156,7 +140,7 @@ auto TimestampDictionaryWriter::ingest_numeric_json_timestamp(
                 error.category().name(),
                 error.message()
         );
-        return error;
+        throw OperationFailed(ErrorCodeFailure, __FILENAME__, __LINE__);
     }
 
     auto const new_pattern_id{m_next_id++};
@@ -164,14 +148,14 @@ auto TimestampDictionaryWriter::ingest_numeric_json_timestamp(
             std::string{pattern},
             std::make_pair(std::move(pattern_result.value()), new_pattern_id)
     );
-    return std::make_pair(epoch_timestamp, new_pattern_id);
+    return {epoch_timestamp, new_pattern_id};
 }
 
 auto TimestampDictionaryWriter::ingest_unknown_precision_epoch_timestamp(
         std::string_view key,
         int32_t node_id,
         int64_t timestamp
-) -> ystdlib::error_handling::Result<std::pair<epochtime_t, uint64_t>> {
+) -> std::pair<epochtime_t, uint64_t> {
     auto& [_, timestamp_entry] = *m_column_id_to_range.try_emplace(node_id, key, node_id).first;
 
     auto const [factor, precision] = timestamp_parser::estimate_timestamp_precision(timestamp);
@@ -189,7 +173,7 @@ auto TimestampDictionaryWriter::ingest_unknown_precision_epoch_timestamp(
                     error.category().name(),
                     error.message()
             );
-            return error;
+            throw OperationFailed(ErrorCodeFailure, __FILENAME__, __LINE__);
         }
         auto const new_pattern_id{m_next_id++};
         pattern_it
@@ -200,7 +184,7 @@ auto TimestampDictionaryWriter::ingest_unknown_precision_epoch_timestamp(
                           )
                           .first;
     }
-    return std::make_pair(epoch_timestamp, pattern_it->second.second);
+    return {epoch_timestamp, pattern_it->second.second};
 }
 
 epochtime_t TimestampDictionaryWriter::get_begin_timestamp() const {
