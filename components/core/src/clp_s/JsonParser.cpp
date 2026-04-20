@@ -512,14 +512,17 @@ void JsonParser::parse_line(
                             cur_key
                     );
                     if (matches_timestamp) {
-                        m_current_parsed_message.add_value(
-                                node_id,
+                        auto const ingest_result{
                                 m_archive_writer->ingest_unknown_precision_epoch_timestamp(
                                         m_timestamp_key,
                                         node_id,
                                         i64_value
                                 )
-                        );
+                        };
+                        if (ingest_result.has_error()) {
+                            throw OperationFailed(ErrorCodeFailure, __FILENAME__, __LINE__);
+                        }
+                        m_current_parsed_message.add_value(node_id, ingest_result.value());
                     } else {
                         m_current_parsed_message.add_value(node_id, i64_value);
                     }
@@ -534,14 +537,15 @@ void JsonParser::parse_line(
                         auto const double_value_str{
                                 trim_trailing_whitespace(line.raw_json_token())
                         };
-                        m_current_parsed_message.add_value(
+                        auto const ingest_result{m_archive_writer->ingest_numeric_json_timestamp(
+                                m_timestamp_key,
                                 node_id,
-                                m_archive_writer->ingest_numeric_json_timestamp(
-                                        m_timestamp_key,
-                                        node_id,
-                                        double_value_str
-                                )
-                        );
+                                double_value_str
+                        )};
+                        if (ingest_result.has_error()) {
+                            throw OperationFailed(ErrorCodeFailure, __FILENAME__, __LINE__);
+                        }
+                        m_current_parsed_message.add_value(node_id, ingest_result.value());
                     } else if (m_retain_float_format) {
                         auto double_value_str{trim_trailing_whitespace(line.raw_json_token())};
                         auto const float_format_result{get_float_encoding(double_value_str)};
@@ -583,15 +587,16 @@ void JsonParser::parse_line(
                     };
                     node_id = m_archive_writer
                                       ->add_node(node_id_stack.top(), NodeType::Timestamp, cur_key);
-                    m_current_parsed_message.add_value(
+                    auto const ingest_result{m_archive_writer->ingest_string_timestamp(
+                            m_timestamp_key,
                             node_id,
-                            m_archive_writer->ingest_string_timestamp(
-                                    m_timestamp_key,
-                                    node_id,
-                                    raw_timestamp_literal,
-                                    true
-                            )
-                    );
+                            raw_timestamp_literal,
+                            true
+                    )};
+                    if (ingest_result.has_error()) {
+                        throw OperationFailed(ErrorCodeFailure, __FILENAME__, __LINE__);
+                    }
+                    m_current_parsed_message.add_value(node_id, ingest_result.value());
                     m_current_schema.insert_ordered(node_id);
                     break;
                 }

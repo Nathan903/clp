@@ -11,6 +11,7 @@
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_io.hpp>
 #include <nlohmann/json.hpp>
+#include <ystdlib/error_handling/Result.hpp>
 
 #include <clp/streaming_archive/Constants.hpp>
 #include <clp_s/archive_constants.hpp>
@@ -208,7 +209,7 @@ public:
             int32_t node_id,
             std::string_view timestamp,
             bool is_json_literal
-    ) -> std::pair<epochtime_t, uint64_t> {
+    ) -> ystdlib::error_handling::Result<std::pair<epochtime_t, uint64_t>> {
         return m_timestamp_dict.ingest_string_timestamp(key, node_id, timestamp, is_json_literal);
     }
 
@@ -221,7 +222,7 @@ public:
      */
     [[nodiscard]] auto
     ingest_numeric_json_timestamp(std::string_view key, int32_t node_id, std::string_view timestamp)
-            -> std::pair<epochtime_t, uint64_t> {
+            -> ystdlib::error_handling::Result<std::pair<epochtime_t, uint64_t>> {
         return m_timestamp_dict.ingest_numeric_json_timestamp(key, node_id, timestamp);
     }
 
@@ -237,7 +238,7 @@ public:
             std::string_view key,
             int32_t node_id,
             int64_t timestamp
-    ) -> std::pair<epochtime_t, uint64_t> {
+    ) -> ystdlib::error_handling::Result<std::pair<epochtime_t, uint64_t>> {
         return m_timestamp_dict.ingest_unknown_precision_epoch_timestamp(key, node_id, timestamp);
     }
 
