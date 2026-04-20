@@ -61,6 +61,18 @@ void ArchiveWriter::open(ArchiveWriterOption const& option) {
     std::string array_dict_path = m_archive_path + constants::cArchiveArrayDictFile;
     m_array_dict = std::make_shared<LogTypeDictionaryWriter>();
     m_array_dict->open(array_dict_path, m_compression_level, UINT64_MAX);
+
+    auto timestamp_dict_result{TimestampDictionaryWriter::create()};
+    if (timestamp_dict_result.has_error()) {
+        auto const& error{timestamp_dict_result.error()};
+        SPDLOG_ERROR(
+                "Failed to initialize timestamp dictionary: {} - {}",
+                error.category().name(),
+                error.message()
+        );
+        throw OperationFailed(ErrorCodeFailure, __FILENAME__, __LINE__);
+    }
+    m_timestamp_dict = std::move(timestamp_dict_result.value());
 }
 
 auto ArchiveWriter::close(bool is_split) -> ArchiveStats {
@@ -115,8 +127,8 @@ auto ArchiveWriter::close(bool is_split) -> ArchiveStats {
 
     ArchiveStats archive_stats{
             m_id,
-            m_timestamp_dict.get_begin_timestamp(),
-            m_timestamp_dict.get_end_timestamp(),
+            m_timestamp_dict->get_begin_timestamp(),
+            m_timestamp_dict->get_end_timestamp(),
             m_uncompressed_size,
             m_compressed_size,
             archive_range_index,
@@ -130,7 +142,7 @@ auto ArchiveWriter::close(bool is_split) -> ArchiveStats {
     m_id_to_schema_writer.clear();
     m_schema_tree.clear();
     m_schema_map.clear();
-    m_timestamp_dict.clear();
+    m_timestamp_dict->clear();
     m_encoded_message_size = 0UL;
     m_uncompressed_size = 0UL;
     m_compressed_size = 0UL;
@@ -198,7 +210,7 @@ auto ArchiveWriter::write_archive_metadata(
     // Write timestamp dictionary
     compressor.write_numeric_value(ArchiveMetadataPacketType::TimestampDictionary);
     std::stringstream timestamp_dict_stream;
-    m_timestamp_dict.write(timestamp_dict_stream);
+    m_timestamp_dict->write(timestamp_dict_stream);
     std::string encoded_timestamp_dict = timestamp_dict_stream.str();
     compressor.write_numeric_value(static_cast<uint32_t>(encoded_timestamp_dict.size()));
     compressor.write(encoded_timestamp_dict.data(), encoded_timestamp_dict.size());

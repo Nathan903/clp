@@ -3,10 +3,13 @@
 
 #include <cstddef>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
+
+#include <ystdlib/error_handling/Result.hpp>
 
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_io.hpp>
@@ -208,8 +211,8 @@ public:
             int32_t node_id,
             std::string_view timestamp,
             bool is_json_literal
-    ) -> std::pair<epochtime_t, uint64_t> {
-        return m_timestamp_dict.ingest_string_timestamp(key, node_id, timestamp, is_json_literal);
+    ) -> ystdlib::error_handling::Result<std::pair<epochtime_t, uint64_t>> {
+        return m_timestamp_dict->ingest_string_timestamp(key, node_id, timestamp, is_json_literal);
     }
 
     /**
@@ -221,8 +224,8 @@ public:
      */
     [[nodiscard]] auto
     ingest_numeric_json_timestamp(std::string_view key, int32_t node_id, std::string_view timestamp)
-            -> std::pair<epochtime_t, uint64_t> {
-        return m_timestamp_dict.ingest_numeric_json_timestamp(key, node_id, timestamp);
+            -> ystdlib::error_handling::Result<std::pair<epochtime_t, uint64_t>> {
+        return m_timestamp_dict->ingest_numeric_json_timestamp(key, node_id, timestamp);
     }
 
     /**
@@ -237,8 +240,8 @@ public:
             std::string_view key,
             int32_t node_id,
             int64_t timestamp
-    ) -> std::pair<epochtime_t, uint64_t> {
-        return m_timestamp_dict.ingest_unknown_precision_epoch_timestamp(key, node_id, timestamp);
+    ) -> ystdlib::error_handling::Result<std::pair<epochtime_t, uint64_t>> {
+        return m_timestamp_dict->ingest_unknown_precision_epoch_timestamp(key, node_id, timestamp);
     }
 
     /**
@@ -352,7 +355,7 @@ private:
     std::shared_ptr<VariableDictionaryWriter> m_var_dict;
     std::shared_ptr<LogTypeDictionaryWriter> m_log_dict;
     std::shared_ptr<LogTypeDictionaryWriter> m_array_dict;  // log type dictionary for arrays
-    TimestampDictionaryWriter m_timestamp_dict;
+    std::optional<TimestampDictionaryWriter> m_timestamp_dict;
     int m_compression_level{};
     bool m_print_archive_stats{};
     bool m_single_file_archive{};
