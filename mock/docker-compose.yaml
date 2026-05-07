@@ -1,0 +1,109 @@
+services:
+  # --- OTel Collector (infrastructure layer) ---
+  # Receives OTLP/HTTP from all mock CLP components and forwards to the
+  # telemetry server. This mirrors the production collector at
+  # telemetry.yscope.io:4318.
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: mock-otel-collector
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./otel-collector/config.yaml:/etc/otelcol/config.yaml:ro
+    # No host port mappings — mock components connect within the Docker network.
+    # The collector forwards metrics to the telemetry server via
+    # host.docker.internal:4318.  To avoid port conflicts with the telemetry
+    # server stack, we don't expose 4318 or 8889 to the host.
+    networks:
+      - mock-clp-net
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # --- Mock CLP Components ---
+  # Each container runs a Python script that initializes the OTel SDK with
+  # the same resource attributes and emits the same metrics as the real CLP
+  # component, but with random values.
+
+  log-ingestor:
+    build:
+      context: .
+      dockerfile: components/log-ingestor/Dockerfile
+    container_name: mock-log-ingestor
+    environment: &shared-env
+      CLP_INSTANCE_ID: ${CLP_INSTANCE_ID:-unknown}
+      CLP_VERSION: ${CLP_VERSION:-0.12.1-mock}
+      CLP_DEPLOYMENT_METHOD: ${CLP_DEPLOYMENT_METHOD:-docker-compose}
+      CLP_STORAGE_ENGINE: ${CLP_STORAGE_ENGINE:-clp-s}
+      CLP_HOST_OS: ${CLP_HOST_OS:-linux}
+      CLP_HOST_OS_VERSION: ${CLP_HOST_OS_VERSION:-unknown}
+      CLP_HOST_ARCH: ${CLP_HOST_ARCH:-x86_64}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      CLP_DISABLE_TELEMETRY: ${CLP_DISABLE_TELEMETRY:-}
+      CLP_TELEMETRY_DEBUG: ${CLP_TELEMETRY_DEBUG:-}
+    depends_on:
+      - otel-collector
+    networks:
+      - mock-clp-net
+
+  api-server:
+    build:
+      context: .
+      dockerfile: components/api-server/Dockerfile
+    container_name: mock-api-server
+    environment: *shared-env
+    depends_on:
+      - otel-collector
+    networks:
+      - mock-clp-net
+
+  compression-worker:
+    build:
+      context: .
+      dockerfile: components/compression-worker/Dockerfile
+    container_name: mock-compression-worker
+    environment: *shared-env
+    depends_on:
+      - otel-collector
+    networks:
+      - mock-clp-net
+
+  query-worker:
+    build:
+      context: .
+      dockerfile: components/query-worker/Dockerfile
+    container_name: mock-query-worker
+    environment: *shared-env
+    depends_on:
+      - otel-collector
+    networks:
+      - mock-clp-net
+
+  compression-scheduler:
+    build:
+      context: .
+      dockerfile: components/compression-scheduler/Dockerfile
+    container_name: mock-compression-scheduler
+    environment:
+      <<: *shared-env
+      CLP_COMPRESSION_WORKER_COUNT: ${CLP_COMPRESSION_WORKER_COUNT:-8}
+    depends_on:
+      - otel-collector
+    networks:
+      - mock-clp-net
+
+  query-scheduler:
+    build:
+      context: .
+      dockerfile: components/query-scheduler/Dockerfile
+    container_name: mock-query-scheduler
+    environment:
+      <<: *shared-env
+      CLP_QUERY_WORKER_COUNT: ${CLP_QUERY_WORKER_COUNT:-8}
+      CLP_REDUCER_COUNT: ${CLP_REDUCER_COUNT:-8}
+    depends_on:
+      - otel-collector
+    networks:
+      - mock-clp-net
+
+networks:
+  mock-clp-net:
+    driver: bridge

@@ -1,0 +1,94 @@
+# OpenTelemetry Collector configuration for the CLP telemetry server.
+#
+# Architecture:
+#   nginx (edge) → collector → ClickHouse
+#                          ↘ debug log
+#
+# Protections (3 layers):
+#   1. Payload size  — nginx (5 MB) + max_request_body_size (defense in depth)
+#   2. Schema validation — filter processors (metric namespace + required attrs)
+#   3. Rate limiting — nginx (per-IP) + rate_limiting processor (global backstop)
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+        # Defense in depth: nginx already enforces 5 MB at the edge.
+        max_request_body_size: 5_242_880  # 5 MiB
+
+processors:
+  # --- Schema validation: metric namespace ---
+  # Only accept metrics in the clp.* namespace.  Unknown metrics are
+  # silently dropped (error_mode: ignore) so a misconfigured component
+  # cannot pollute ClickHouse with junk data.
+  filter/clp_namespace:
+    error_mode: ignore
+    metrics:
+      include:
+        match_type: regexp
+        metric_names:
+          - "clp\\..*"
+
+  # --- Schema validation: required resource attributes ---
+  # Drop any metric whose resource is missing clp.deployment.id or
+  # service.name — the minimum attributes needed to identify and group
+  # metrics by deployment.
+  filter/required_attrs:
+    error_mode: ignore
+    metrics:
+      metric:
+        # OTTL conditions: when TRUE the metric is DROPPED.
+        - 'not HasAttribute(resource, "clp.deployment.id")'
+        - 'not HasAttribute(resource, "service.name")'
+
+  # --- Global rate limiting (backstop) ---
+  # Per-IP rate limiting is handled by nginx.  This processor is a safety
+  # net for the overall pipeline — if total throughput across all
+  # deployments exceeds the limit, new data is rejected until capacity
+  # frees up.
+  rate_limiting:
+    spike_limit_per_second: 200
+    per_second_limit: 100
+
+  # --- Batching ---
+  batch:
+    timeout: 10s
+    send_batch_size: 1024
+
+exporters:
+  # --- ClickHouse ---
+  # Long-term metric storage.  The exporter auto-creates the table schema
+  # on first write (create_schema: true).  See clickhouse/init.sql for the
+  # explicit schema that provides materialized columns for fast lookups.
+  clickhouse:
+    endpoint: tcp://clickhouse:9000
+    database: otel
+    username: default
+    password: ""
+    ttl: 72h
+    metrics_table_name: otel_metrics
+    create_schema: true
+
+  # --- Debug exporter ---
+  # Logs every metric to stdout.  Set verbosity to "basic" or remove this
+  # exporter in production to reduce log volume.
+  debug:
+    verbosity: detailed
+    sampling_initial: 5
+    sampling_thereafter: 200
+
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors:
+        - filter/clp_namespace
+        - filter/required_attrs
+        - rate_limiting
+        - batch
+      exporters: [clickhouse, debug]
+
+  telemetry:
+    logs:
+      level: info

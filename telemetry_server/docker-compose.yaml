@@ -1,0 +1,106 @@
+# CLP Telemetry Server — local development and testing stack
+#
+# Architecture:
+#   Client (mock or real CLP)
+#       │
+#       │  OTLP/HTTP  (nginx :4318)
+#       ▼
+#   ┌───────────────┐
+#   │   nginx       │  Payload-size limit, per-IP rate limiting
+#   └───────┬───────┘
+#           │  OTLP/HTTP
+#           ▼
+#   ┌───────────────┐
+#   │ OTel Collector│  Schema validation, global rate limiting, batching
+#   └───────┬───────┘
+#           │  ClickHouse native protocol
+#           ▼
+#   ┌───────────────┐
+#   │  ClickHouse   │  Long-term metric storage
+#   └───────┬───────┘
+#           │  SQL / HTTP
+#           ▼
+#   ┌───────────────┐
+#   │   Grafana     │  Dashboards  http://localhost:3000
+#   └───────────────┘
+#
+# Usage:
+#   docker compose up -d
+#
+# Then point the mock client (or a real CLP deployment) at http://localhost:4318
+
+services:
+  # --- Edge proxy: payload-size limit + per-IP rate limiting ---
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: clp-nginx
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "4318:4318"   # OTLP/HTTP (public entry point)
+    depends_on:
+      - otel-collector
+    networks:
+      - clp-telemetry-net
+
+  # --- OTel Collector: schema validation + global rate limiting + export ---
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.110.0
+    container_name: clp-otel-collector
+    command: ["--config", "/etc/otelcol/config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otelcol/config.yaml:ro
+    # No host port — only reachable via nginx within the Docker network.
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    networks:
+      - clp-telemetry-net
+
+  # --- ClickHouse: time-series storage ---
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8-alpine
+    container_name: clp-clickhouse
+    environment:
+      CLICKHOUSE_DB: otel
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: ""
+    volumes:
+      - clickhouse-storage:/var/lib/clickhouse
+      - ./clickhouse/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "8123:8123"   # HTTP interface (Grafana, clickhouse-client)
+      - "9000:9000"   # Native TCP (OTel Collector)
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 5s
+      retries: 5
+    networks:
+      - clp-telemetry-net
+
+  # --- Grafana: dashboards ---
+  grafana:
+    image: grafana/grafana:11.4.0
+    container_name: clp-grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_INSTALL_PLUGINS=grafana-clickhouse-datasource
+    volumes:
+      - ./grafana-datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml:ro
+      - grafana-storage:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    networks:
+      - clp-telemetry-net
+
+volumes:
+  clickhouse-storage:
+  grafana-storage:
+
+networks:
+  clp-telemetry-net:
+    driver: bridge

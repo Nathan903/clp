@@ -1,0 +1,36 @@
+# Mock CLP OTel Collector configuration.
+# Receives OTLP/HTTP metrics from mock CLP components (port 4318),
+# then forwards them to the telemetry server.
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 10s
+    send_batch_size: 1024
+
+exporters:
+  # Forward to the telemetry server's OTel Collector.
+  # For local testing, set TELEMETRY_SERVER_HOST before running start-mock.sh:
+  #   export TELEMETRY_SERVER_HOST=host.docker.internal
+  otlphttp:
+    endpoint: http://${TELEMETRY_SERVER_HOST:-host.docker.internal}:4318
+    # Use http (not https) for local development.
+    tls:
+      insecure: true
+
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp]
+
+  telemetry:
+    metrics:
+      level: detailed
+      address: 0.0.0.0:8889
