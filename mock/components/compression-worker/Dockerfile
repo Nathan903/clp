@@ -1,8 +1,8 @@
 FROM python:3.12-slim
 
 WORKDIR /app
-COPY common/ /app/common/
-COPY compression-worker/mock.py /app/mock.py
+COPY components/common/ /app/common/
+COPY components/compression-worker/mock.py /app/mock.py
 
 RUN pip install --no-cache-dir \
     opentelemetry-api>=1.31.1 \
