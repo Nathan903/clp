@@ -7,7 +7,7 @@
 # Protections (3 layers):
 #   1. Payload size  — nginx (5 MB) + max_request_body_size (defense in depth)
 #   2. Schema validation — filter processors (metric namespace + required attrs)
-#   3. Rate limiting — nginx (per-IP) + rate_limiting processor (global backstop)
+#   3. Rate limiting — nginx (per-IP) + memory_limiter (collector backstop)
 
 receivers:
   otlp:
@@ -42,14 +42,15 @@ processors:
         - 'not HasAttribute(resource, "clp.deployment.id")'
         - 'not HasAttribute(resource, "service.name")'
 
-  # --- Global rate limiting (backstop) ---
-  # Per-IP rate limiting is handled by nginx.  This processor is a safety
-  # net for the overall pipeline — if total throughput across all
-  # deployments exceeds the limit, new data is rejected until capacity
-  # frees up.
-  rate_limiting:
-    spike_limit_per_second: 200
-    per_second_limit: 100
+  # --- Memory limiter (collector backstop) ---
+  # Per-IP rate limiting is handled by nginx.  This processor protects the
+  # collector itself from OOM — if memory spikes (e.g., a burst of large
+  # payloads gets through nginx), it refuses new data until memory drops
+  # below the soft limit.
+  memory_limiter:
+    check_interval: 1s
+    memory_limit_percentage: 80
+    memory_spike_percentage: 25
 
   # --- Batching ---
   batch:
@@ -85,7 +86,7 @@ service:
       processors:
         - filter/clp_namespace
         - filter/required_attrs
-        - rate_limiting
+        - memory_limiter
         - batch
       exporters: [clickhouse, debug]
 
