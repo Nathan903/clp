@@ -20,7 +20,7 @@ fi
 
 # Mimic the interactivity detection from the real .common-env.sh
 CLP_COMPOSE_RUN_EXTRA_FLAGS=()
-if [[ $- != *i* ]]; then
+if [ ! -t 0 ]; then
     CLP_COMPOSE_RUN_EXTRA_FLAGS+=(--interactive=false)
 else
     CLP_COMPOSE_RUN_EXTRA_FLAGS+=(--interactive --tty)
