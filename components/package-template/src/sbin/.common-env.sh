@@ -70,7 +70,7 @@ if [[ -z "${CLP_DOCKER_SOCK_PATH:-}" ]]; then
 fi
 
 CLP_COMPOSE_RUN_EXTRA_FLAGS=()
-if [[ $- != *i* ]]; then
+if [ ! -t 0 ]; then
     CLP_COMPOSE_RUN_EXTRA_FLAGS+=(--interactive=false)
 else
     CLP_COMPOSE_RUN_EXTRA_FLAGS+=(--interactive --tty)

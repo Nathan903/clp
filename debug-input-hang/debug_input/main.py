@@ -48,7 +48,10 @@ def main():
     print(f"\n--- Attempting input() ---")
     print("If this hangs, you've reproduced the bug.")
     try:
+        print("DEBUG [main.py]: >>> About to call input() <<<")
+        sys.stdout.flush() # flush to ensure this is printed before a potential hang
         response = input("Type something and press Enter: ").strip()
+        print("DEBUG [main.py]: <<< Successfully returned from input() <<<")
         print(f"  You typed: '{response}'")
     except EOFError:
         print("  Got EOFError — stdin was closed / not connected")
