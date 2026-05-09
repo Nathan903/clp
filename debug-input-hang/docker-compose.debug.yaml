@@ -1,0 +1,16 @@
+services:
+  debug-runtime:
+    hostname: "debug_runtime"
+    image: "${DEBUG_IMAGE:?Set DEBUG_IMAGE to a Python Docker image.}"
+    logging:
+      driver: "local"
+    network_mode: "host"
+    user: "${DEBUG_UID_GID:-1000:1000}"
+    environment:
+      HOME: "${HOME:?Please set a value.}"
+    volumes:
+      # Mount the debug script directory so the Python module is accessible
+      - type: "bind"
+        source: "${PWD:?}"
+        target: "/opt/debug"
+    working_dir: "/opt/debug"
