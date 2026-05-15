@@ -32,3 +32,6 @@ service:
       receivers: ["otlp"]
       processors: ["batch"]
       exporters: ["otlphttp"]
+  telemetry:
+    logs:
+      level: "debug"
