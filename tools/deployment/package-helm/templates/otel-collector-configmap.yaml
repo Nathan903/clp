@@ -13,10 +13,10 @@ data:
 
     processors:
       batch:
-        timeout: 30s
+        timeout: "30s"
         send_batch_size: 1024
       resourcedetection:
-        detectors: [env, system]
+        detectors: ["env", "system"]
         override: false
 
     exporters:
@@ -26,15 +26,15 @@ data:
     service:
       pipelines:
         metrics:
-          receivers: [otlp]
-          processors: [resourcedetection, batch]
-          exporters: [otlphttp]
+          receivers: ["otlp"]
+          processors: ["resourcedetection", "batch"]
+          exporters: ["otlphttp"]
         traces:
-          receivers: [otlp]
-          processors: [resourcedetection, batch]
-          exporters: [otlphttp]
+          receivers: ["otlp"]
+          processors: ["resourcedetection", "batch"]
+          exporters: ["otlphttp"]
         logs:
-          receivers: [otlp]
-          processors: [resourcedetection, batch]
-          exporters: [otlphttp]
+          receivers: ["otlp"]
+          processors: ["resourcedetection", "batch"]
+          exporters: ["otlphttp"]
 {{- end }}
