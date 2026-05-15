@@ -1214,7 +1214,7 @@ class DockerComposeController(BaseController):
 
         try:
             payload_str = json.dumps(payload)
-            result = subprocess.run(
+            subprocess.run(
                 [
                     "docker",
                     "run",
@@ -1237,16 +1237,10 @@ class DockerComposeController(BaseController):
                     payload_str,
                     "http://otel-collector:4318/v1/metrics",
                 ],
-                capture_output=True,
-                text=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
                 timeout=15,
             )
-            if result.returncode != 0:
-                logger.warning(
-                    "Failed to emit topology metrics: returncode=%d, stderr=%s",
-                    result.returncode,
-                    result.stderr,
-                )
         except Exception as e:
             logger.warning(f"Failed to emit topology metrics: {e}")
 
