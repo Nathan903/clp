@@ -34,5 +34,8 @@ spec:
       volumes:
         - name: otel-collector-config
           configMap:
-            name: {{ include "clp.fullname" . }}-otel-collector-config
+            name: {{ include "clp.fullname" . }}-config
+            items:
+              - key: otel-collector-config.yaml
+                path: config.yaml
 {{- end }}
