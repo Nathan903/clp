@@ -17,6 +17,7 @@ spec:
         {{- include "clp.labels" . | nindent 8 }}
         app.kubernetes.io/component: "topology-metrics-emitter"
     spec:
+      serviceAccountName: {{ include "clp.fullname" . }}-service-account
       restartPolicy: "OnFailure"
       initContainers:
         - {{- include "clp.waitFor" (dict

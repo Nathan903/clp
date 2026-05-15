@@ -66,7 +66,7 @@ in controller.py, ensuring feature parity between Docker Compose and Helm deploy
 @return {string} OTLP JSON payload for topology metrics
 */}}
 {{- define "clp.topologyMetricsPayload" -}}
-{{- $timestampNs := now | unixNano -}}
+{{- $timestampNs := now.UnixNano -}}
 {{- $deploymentId := .Values.clpConfig.instanceId | default "00000000-0000-0000-0000-000000000000" -}}
 {{- $serviceVersion := .Chart.AppVersion -}}
 {{- $storageEngine := .Values.clpConfig.package.storageEngine -}}
