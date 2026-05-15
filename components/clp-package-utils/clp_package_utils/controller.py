@@ -4,7 +4,7 @@ import logging
 import multiprocessing
 import os
 import pathlib
-import platform
+
 import socket
 import stat
 import subprocess

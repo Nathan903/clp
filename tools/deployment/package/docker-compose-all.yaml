@@ -721,6 +721,8 @@ services:
       # Value must be either 0 or 1. Set to 0 to disable the otel collector.
       replicas: "${CLP_OTEL_COLLECTOR_ENABLED:-1}"
     user: "${CLP_THIRD_PARTY_SERVICE_UID_GID:-1000:1000}"
+    group_add:
+      - "${CLP_DOCKER_GID:-999}"
     environment:
       CLP_TELEMETRY_ENDPOINT: "${CLP_TELEMETRY_ENDPOINT:-https://telemetry.yscope.io}"
     ports:
@@ -730,3 +732,6 @@ services:
         source: "./otel-collector-config.yaml"
         target: "/etc/otelcol-contrib/config.yaml"
         read_only: true
+      - type: "bind"
+        source: "/var/run/docker.sock"
+        target: "/var/run/docker.sock"

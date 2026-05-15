@@ -8,9 +8,6 @@ processors:
   batch:
     timeout: "10s"
     send_batch_size: 5000
-  resourcedetection:
-    detectors: ["env", "system"]
-    override: false
 
 exporters:
   clickhouse:
@@ -27,5 +24,5 @@ service:
   pipelines:
     metrics:
       receivers: ["otlp"]
-      processors: ["resourcedetection", "batch"]
+      processors: ["batch"]
       exporters: ["clickhouse"]
