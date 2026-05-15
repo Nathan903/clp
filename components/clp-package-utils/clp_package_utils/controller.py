@@ -1207,7 +1207,7 @@ class DockerComposeController(BaseController):
 
         try:
             payload_str = json.dumps(payload)
-            subprocess.run(
+            result = subprocess.run(
                 [
                     "docker",
                     "run",
@@ -1215,7 +1215,7 @@ class DockerComposeController(BaseController):
                     "--network",
                     f"{self._project_name}_default",
                     "curlimages/curl",
-                    "-s",
+                    "-v",
                     "--fail",
                     "--retry",
                     "5",
@@ -1230,10 +1230,22 @@ class DockerComposeController(BaseController):
                     payload_str,
                     "http://otel-collector:4318/v1/metrics",
                 ],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
                 timeout=15,
             )
+            logger.info(
+                "Topology metrics emission result: returncode=%d, stdout=%s, stderr=%s",
+                result.returncode,
+                result.stdout,
+                result.stderr,
+            )
+            if result.returncode != 0:
+                logger.warning(
+                    "Failed to emit topology metrics: returncode=%d, stderr=%s",
+                    result.returncode,
+                    result.stderr,
+                )
         except Exception as e:
             logger.warning(f"Failed to emit topology metrics: {e}")
 
