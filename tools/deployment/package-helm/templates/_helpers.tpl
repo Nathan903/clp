@@ -69,13 +69,13 @@ in controller.py, ensuring feature parity between Docker Compose and Helm deploy
 {{- $timestampNs := now.UnixNano -}}
 {{- $deploymentId := .Values.clpConfig.instanceId | default "00000000-0000-0000-0000-000000000000" -}}
 {{- $serviceVersion := .Chart.AppVersion -}}
-{{- $storageEngine := .Values.clpConfig.package.storageEngine -}}
+{{- $storageEngine := .Values.clpConfig.package.storage_engine -}}
 {{- $osType := .Values.hostOS | default "linux" -}}
 {{- $hostArch := .Values.hostArch | default "amd64" -}}
-{{- $compressionWorkerReplicas := .Values.scheduling.compressionWorker.replicas | default 1 -}}
-{{- $queryWorkerReplicas := .Values.scheduling.queryWorker.replicas | default 1 -}}
-{{- $reducerReplicas := .Values.scheduling.reducer.replicas | default 1 -}}
-{{- $workerConcurrency := .Values.workerConcurrency | default 8 -}}
+{{- $compressionWorkerReplicas := .Values.scheduling.compressionWorker.replicas | default 1 | int -}}
+{{- $queryWorkerReplicas := .Values.scheduling.queryWorker.replicas | default 1 | int -}}
+{{- $reducerReplicas := .Values.scheduling.reducer.replicas | default 1 | int -}}
+{{- $workerConcurrency := .Values.workerConcurrency | default 8 | int -}}
 {{- printf `{"resourceMetrics":[{"resource":{"attributes":[{"key":"clp.deployment.id","value":{"stringValue":"%s"}},{"key":"service.version","value":{"stringValue":"%s"}},{"key":"clp.deployment.method","value":{"stringValue":"helm"}},{"key":"clp.storage.engine","value":{"stringValue":"%s"}},{"key":"os.type","value":{"stringValue":"%s"}},{"key":"host.arch","value":{"stringValue":"%s"}},{"key":"service.name","value":{"stringValue":"controller"}}]},"scopeMetrics":[{"scope":{"name":"clp.controller"},"metrics":[{"name":"clp.deployment.compression_worker_replicas","gauge":{"dataPoints":[{"asInt":"%d","timeUnixNano":"%d"}]}},{"name":"clp.deployment.compression_worker_concurrency","gauge":{"dataPoints":[{"asInt":"%d","timeUnixNano":"%d"}]}},{"name":"clp.deployment.query_worker_replicas","gauge":{"dataPoints":[{"asInt":"%d","timeUnixNano":"%d"}]}},{"name":"clp.deployment.query_worker_concurrency","gauge":{"dataPoints":[{"asInt":"%d","timeUnixNano":"%d"}]}},{"name":"clp.deployment.reducer_replicas","gauge":{"dataPoints":[{"asInt":"%d","timeUnixNano":"%d"}]}},{"name":"clp.deployment.reducer_concurrency","gauge":{"dataPoints":[{"asInt":"%d","timeUnixNano":"%d"}]}}]}]}]}` $deploymentId $serviceVersion $storageEngine $osType $hostArch $compressionWorkerReplicas $timestampNs $workerConcurrency $timestampNs $queryWorkerReplicas $timestampNs $workerConcurrency $timestampNs $reducerReplicas $timestampNs $workerConcurrency $timestampNs -}}
 {{- end -}}
 
