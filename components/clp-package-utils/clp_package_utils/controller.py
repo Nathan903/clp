@@ -1179,7 +1179,14 @@ class DockerComposeController(BaseController):
 
         def add_gauge(name: str, value: int):
             metrics.append(
-                {"name": name, "dataPoints": [{"asInt": value, "timeUnixNano": str(timestamp_ns)}]}
+                {
+                    "name": name,
+                    "gauge": {
+                        "dataPoints": [
+                            {"asInt": str(value), "timeUnixNano": str(timestamp_ns)}
+                        ]
+                    },
+                }
             )
 
         num_workers = self._get_num_workers()
@@ -1215,7 +1222,7 @@ class DockerComposeController(BaseController):
                     "--network",
                     f"{self._project_name}_default",
                     "curlimages/curl",
-                    "-v",
+                    "-s",
                     "--fail",
                     "--retry",
                     "5",
@@ -1233,12 +1240,6 @@ class DockerComposeController(BaseController):
                 capture_output=True,
                 text=True,
                 timeout=15,
-            )
-            logger.info(
-                "Topology metrics emission result: returncode=%d, stdout=%s, stderr=%s",
-                result.returncode,
-                result.stdout,
-                result.stderr,
             )
             if result.returncode != 0:
                 logger.warning(
