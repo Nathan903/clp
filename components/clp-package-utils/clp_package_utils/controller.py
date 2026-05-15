@@ -1033,8 +1033,6 @@ class DockerComposeController(BaseController):
                 "service.version": clp_version,
                 "clp.deployment.method": "docker-compose",
                 "clp.storage.engine": self._clp_config.package.storage_engine,
-                "os.type": platform.system().lower(),
-                "host.arch": platform.machine().lower(),
             }
 
             resource_attrs_str = ",".join(f"{k}={v}" for k, v in self._resource_attrs.items())
