@@ -20,8 +20,8 @@ spec:
     spec:
       containers:
         - name: otel-collector
-          image: {{ .Values.clpConfig.telemetry.collector.image | quote }}
-          imagePullPolicy: "IfNotPresent"
+          image: {{ printf "%s:%s" .Values.image.otelCollector.repository .Values.image.otelCollector.tag | quote }}
+          imagePullPolicy: {{ .Values.image.otelCollector.pullPolicy | quote }}
           ports:
             - containerPort: 4318
               protocol: TCP
