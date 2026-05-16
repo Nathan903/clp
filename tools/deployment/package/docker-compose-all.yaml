@@ -725,7 +725,9 @@ services:
     environment:
       CLP_TELEMETRY_ENDPOINT: "${CLP_TELEMETRY_ENDPOINT:-https://telemetry.yscope.io}"
     ports:
-      - "127.0.0.1:4318:4318"
+      - host_ip: "127.0.0.1"
+        published: "${CLP_OTEL_COLLECTOR_PORT:-4318}"
+        target: 4318
     volumes:
       - type: "bind"
         source: "${CLP_OTEL_COLLECTOR_CONF_FILE_HOST:-./etc/otel-collector/config.yaml}"
