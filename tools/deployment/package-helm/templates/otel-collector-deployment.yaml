@@ -21,8 +21,7 @@ spec:
       containers:
         - name: otel-collector
           image: {{ .Values.clpConfig.telemetry.collector.image | quote }}
-          args:
-            - "--config=/etc/otelcol-contrib/config.yaml"
+          imagePullPolicy: "IfNotPresent"
           ports:
             - containerPort: 4318
               protocol: TCP
@@ -31,6 +30,8 @@ spec:
           volumeMounts:
             - name: otel-collector-config
               mountPath: /etc/otelcol-contrib
+          args:
+            - "--config=/etc/otelcol-contrib/config.yaml"
       volumes:
         - name: otel-collector-config
           configMap:
