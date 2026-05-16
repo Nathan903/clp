@@ -51,10 +51,29 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 
 {{/*
+Gets or generates the instance ID.
+It ensures the exact same UUID is used across all templates during a single helm install/upgrade.
+*/}}
+{{- define "clp.instanceId" -}}
+{{- if not .Values.global }}
+  {{- $_ := set .Values "global" dict -}}
+{{- end }}
+{{- if not .Values.global.instanceId }}
+  {{- $existing := lookup "v1" "ConfigMap" .Release.Namespace (printf "%s-instance-id" (include "clp.fullname" .)) }}
+  {{- if $existing }}
+    {{- $_ := set .Values.global "instanceId" (index $existing.data "instanceId") -}}
+  {{- else }}
+    {{- $_ := set .Values.global "instanceId" uuidv4 -}}
+  {{- end }}
+{{- end }}
+{{- .Values.global.instanceId -}}
+{{- end -}}
+
+{{/*
 Provides the standard OpenTelemetry resource attributes.
 */}}
 {{- define "clp.resourceAttributes" -}}
-clp.deployment.id={{ .Values.clpConfig.instanceId | default "00000000-0000-0000-0000-000000000000" }},service.version={{ .Chart.AppVersion }},clp.deployment.method=helm,clp.storage.engine={{ .Values.clpConfig.package.storageEngine }}
+clp.deployment.id={{ include "clp.instanceId" . }},service.version={{ .Chart.Version }},clp.deployment.method=helm,clp.storage.engine={{ .Values.clpConfig.package.storageEngine }}
 {{- end -}}
 
 {{/*
@@ -67,8 +86,8 @@ in controller.py, ensuring feature parity between Docker Compose and Helm deploy
 */}}
 {{- define "clp.topologyMetricsPayload" -}}
 {{- $timestampNs := now.UnixNano -}}
-{{- $deploymentId := .Values.clpConfig.instanceId | default "00000000-0000-0000-0000-000000000000" -}}
-{{- $serviceVersion := .Chart.AppVersion -}}
+{{- $deploymentId := include "clp.instanceId" . -}}
+{{- $serviceVersion := .Chart.Version -}}
 {{- $storageEngine := .Values.clpConfig.package.storage_engine -}}
 {{- $compressionWorkerReplicas := .Values.scheduling.compressionWorker.replicas | default 1 | int -}}
 {{- $queryWorkerReplicas := .Values.scheduling.queryWorker.replicas | default 1 | int -}}
