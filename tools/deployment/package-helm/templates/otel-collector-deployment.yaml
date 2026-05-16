@@ -32,6 +32,14 @@ spec:
               mountPath: /etc/otelcol-contrib
           args:
             - "--config=/etc/otelcol-contrib/config.yaml"
+          readinessProbe:
+            {{- include "clp.readinessProbeTimings" . | nindent 12 }}
+            httpGet: &otel-health-check
+              path: "/"
+              port: 13133
+          livenessProbe:
+            {{- include "clp.livenessProbeTimings" . | nindent 12 }}
+            httpGet: *otel-health-check
       volumes:
         - name: otel-collector-config
           configMap:
