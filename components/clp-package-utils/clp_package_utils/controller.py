@@ -1022,7 +1022,9 @@ class DockerComposeController(BaseController):
         # Telemetry
         if self._clp_config.telemetry.disable:
             env_vars["CLP_DISABLE_TELEMETRY"] = "true"
+            env_vars["CLP_OTEL_COLLECTOR_ENABLED"] = "0"
         else:
+            env_vars["CLP_OTEL_COLLECTOR_ENABLED"] = "1"
             version_file_path = self._clp_home / "VERSION"
             clp_version = (
                 version_file_path.read_text().strip() if version_file_path.exists() else "unknown"
@@ -1113,8 +1115,6 @@ class DockerComposeController(BaseController):
 
         cmd = ["docker", "compose", "--project-name", self._project_name]
         cmd += ["--file", self._get_docker_file_name()]
-        if not self._clp_config.telemetry.disable:
-            cmd += ["--profile", "telemetry"]
         cmd += ["up", "--detach", "--wait"]
         subprocess.run(
             cmd,
