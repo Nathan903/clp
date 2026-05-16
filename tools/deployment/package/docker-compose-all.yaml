@@ -728,7 +728,7 @@ services:
       - "127.0.0.1:4318:4318"
     volumes:
       - type: "bind"
-        source: "./etc/otel-collector/config.yaml"
+        source: "${CLP_OTEL_COLLECTOR_CONF_FILE_HOST:-./etc/otel-collector/config.yaml}"
         target: "/etc/otelcol-contrib/config.yaml"
         read_only: true
       - type: "bind"
