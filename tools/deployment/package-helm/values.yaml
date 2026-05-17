@@ -251,6 +251,20 @@ clpConfig:
   #     --set-file clpConfig.aws_config.config=$HOME/.aws/config
   aws_config: null
 
+  # Telemetry config
+  telemetry:
+    disable: false
+    endpoint: "http://localhost:4318"
+    collector:
+      image: "ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.119.0" # yamllint disable-line
+      resources:
+        requests:
+          cpu: "100m"
+          memory: "128Mi"
+        limits:
+          cpu: "500m"
+          memory: "256Mi"
+
 credentials:
   database:
     username: "clp-user"
