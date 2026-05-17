@@ -4,7 +4,7 @@ import logging
 import multiprocessing
 import os
 import pathlib
-import platform
+
 import socket
 import stat
 import subprocess
@@ -69,6 +69,7 @@ from clp_package_utils.general import (
     dump_shared_container_config,
     generate_docker_compose_container_config,
     get_clp_home,
+    http_request,
     is_retention_period_configured,
     validate_db_config,
     validate_mcp_server_config,
@@ -969,7 +970,6 @@ class DockerComposeController(BaseController):
         self._instance_id = instance_id
         self._project_name = f"clp-package-{instance_id}"
         self._restart_policy = restart_policy
-        self._clp_version: str | None = None
         self._resource_attrs: dict[str, Any] = {}
         super().__init__(clp_config)
 
@@ -1022,26 +1022,29 @@ class DockerComposeController(BaseController):
         # Telemetry
         if self._clp_config.telemetry.disable:
             env_vars["CLP_DISABLE_TELEMETRY"] = "true"
+            env_vars["CLP_OTEL_COLLECTOR_ENABLED"] = "0"
         else:
+            env_vars["CLP_OTEL_COLLECTOR_ENABLED"] = "1"
             version_file_path = self._clp_home / "VERSION"
-            self._clp_version = (
+            clp_version = (
                 version_file_path.read_text().strip() if version_file_path.exists() else "unknown"
             )
 
             self._resource_attrs = {
                 "clp.deployment.id": self._instance_id,
-                "service.version": self._clp_version,
+                "service.version": clp_version,
                 "clp.deployment.method": "docker-compose",
                 "clp.storage.engine": self._clp_config.package.storage_engine,
-                "os.type": platform.system().lower(),
-                "host.arch": platform.machine().lower(),
             }
 
             resource_attrs_str = ",".join(f"{k}={v}" for k, v in self._resource_attrs.items())
             env_vars["OTEL_RESOURCE_ATTRIBUTES"] = resource_attrs_str
             env_vars["OTEL_EXPORTER_OTLP_ENDPOINT"] = "http://otel-collector:4318"
 
-        env_vars["TELEMETRY_ENDPOINT"] = self._clp_config.telemetry.endpoint
+        env_vars["CLP_TELEMETRY_ENDPOINT"] = self._clp_config.telemetry.endpoint
+        env_vars["CLP_OTEL_COLLECTOR_CONF_FILE_HOST"] = str(
+            self._conf_dir / "otel-collector" / "config.yaml"
+        )
 
         # Paths
         aws_config_dir = self._clp_config.aws_config_directory
@@ -1115,8 +1118,6 @@ class DockerComposeController(BaseController):
 
         cmd = ["docker", "compose", "--project-name", self._project_name]
         cmd += ["--file", self._get_docker_file_name()]
-        if not self._clp_config.telemetry.disable:
-            cmd += ["--profile", "telemetry"]
         cmd += ["up", "--detach", "--wait"]
         subprocess.run(
             cmd,
@@ -1179,10 +1180,17 @@ class DockerComposeController(BaseController):
 
         def add_gauge(name: str, value: int):
             metrics.append(
-                {"name": name, "gauge": {"dataPoints": [{"asInt": value, "timeUnixNano": str(timestamp_ns)}]}}
+                {
+                    "name": name,
+                    "gauge": {
+                        "dataPoints": [{"asInt": str(value), "timeUnixNano": str(timestamp_ns)}]
+                    },
+                }
             )
+
         num_workers = self._get_num_workers()
 
+        # NOTE: Replicas are hardcoded to 1 until multi-container workers land (see #1424).
         add_gauge("clp.deployment.compression_worker_replicas", 1)
         add_gauge("clp.deployment.compression_worker_concurrency", num_workers)
         add_gauge("clp.deployment.query_worker_replicas", 1)
@@ -1205,36 +1213,15 @@ class DockerComposeController(BaseController):
             )
 
         try:
-            payload_str = json.dumps(payload)
-            subprocess.run(
-                [
-                    "docker",
-                    "run",
-                    "--rm",
-                    "--network",
-                    f"{self._project_name}_default",
-                    "curlimages/curl",
-                    "-s",
-                    "--fail",
-                    "--retry",
-                    "5",
-                    "--retry-all-errors",
-                    "--retry-delay",
-                    "1",
-                    "-X",
-                    "POST",
-                    "-H",
-                    "Content-Type: application/json",
-                    "-d",
-                    payload_str,
-                    "http://otel-collector:4318/v1/metrics",
-                ],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                timeout=15,
+            payload_bytes = json.dumps(payload).encode("utf-8")
+            http_request(
+                "http://127.0.0.1:4318/v1/metrics",
+                method="POST",
+                data=payload_bytes,
+                headers={"Content-Type": "application/json"},
             )
         except Exception as e:
-            logger.warning(f"Failed to emit topology metrics: {e}")
+            logger.warning("Failed to emit topology metrics: %s", e)
 
 
 def get_or_create_instance_id(clp_config: ClpConfig) -> str:
