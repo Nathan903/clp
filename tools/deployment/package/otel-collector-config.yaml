@@ -15,7 +15,7 @@ processors:
 
 exporters:
   otlphttp:
-    endpoint: "${TELEMETRY_ENDPOINT}"
+    endpoint: "${CLP_TELEMETRY_ENDPOINT}"
   debug:
     verbosity: detailed
 
