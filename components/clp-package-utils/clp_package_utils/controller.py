@@ -969,7 +969,6 @@ class DockerComposeController(BaseController):
         self._instance_id = instance_id
         self._project_name = f"clp-package-{instance_id}"
         self._restart_policy = restart_policy
-        self._clp_version: str | None = None
         self._resource_attrs: dict[str, Any] = {}
         super().__init__(clp_config)
 
@@ -1024,13 +1023,13 @@ class DockerComposeController(BaseController):
             env_vars["CLP_DISABLE_TELEMETRY"] = "true"
         else:
             version_file_path = self._clp_home / "VERSION"
-            self._clp_version = (
+            clp_version = (
                 version_file_path.read_text().strip() if version_file_path.exists() else "unknown"
             )
 
             self._resource_attrs = {
                 "clp.deployment.id": self._instance_id,
-                "service.version": self._clp_version,
+                "service.version": clp_version,
                 "clp.deployment.method": "docker-compose",
                 "clp.storage.engine": self._clp_config.package.storage_engine,
                 "os.type": platform.system().lower(),
@@ -1179,7 +1178,12 @@ class DockerComposeController(BaseController):
 
         def add_gauge(name: str, value: int):
             metrics.append(
-                {"name": name, "gauge": {"dataPoints": [{"asInt": value, "timeUnixNano": str(timestamp_ns)}]}}
+                {
+                    "name": name,
+                    "gauge": {
+                        "dataPoints": [{"asInt": str(value), "timeUnixNano": str(timestamp_ns)}]
+                    },
+                }
             )
         num_workers = self._get_num_workers()
 
@@ -1234,7 +1238,7 @@ class DockerComposeController(BaseController):
                 timeout=15,
             )
         except Exception as e:
-            logger.warning(f"Failed to emit topology metrics: {e}")
+            logger.warning("Failed to emit topology metrics: %s", e)
 
 
 def get_or_create_instance_id(clp_config: ClpConfig) -> str:
