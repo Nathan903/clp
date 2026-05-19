@@ -726,7 +726,7 @@ services:
       CLP_TELEMETRY_ENDPOINT: "${CLP_TELEMETRY_ENDPOINT:-https://telemetry.yscope.io}"
     volumes:
       - type: "bind"
-        source: "./otel-collector-config.yaml"
+        source: "${CLP_OTEL_COLLECTOR_CONF_FILE_HOST:-./etc/otel-collector/config.yaml}"
         target: "/etc/otelcol-contrib/config.yaml"
         read_only: true
       - type: "bind"
