@@ -1,6 +1,6 @@
 {{- if and .Values.clpConfig.telemetry (not .Values.clpConfig.telemetry.disable) }}
-apiVersion: v1
-kind: Service
+apiVersion: "v1"
+kind: "Service"
 metadata:
   name: {{ include "clp.fullname" . }}-otel-collector
   labels:
@@ -8,10 +8,9 @@ metadata:
     app.kubernetes.io/component: "otel-collector"
 spec:
   ports:
-    - name: "otlp-http"
+    - name: "otel-collector"
       port: 4318
-      protocol: TCP
-      targetPort: 4318
+      targetPort: "otel-collector"
   selector:
     {{- include "clp.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: "otel-collector"

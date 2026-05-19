@@ -4,7 +4,6 @@ import logging
 import multiprocessing
 import os
 import pathlib
-
 import socket
 import stat
 import subprocess
@@ -85,6 +84,8 @@ DEFAULT_UID_GID = f"{os.getuid()}:{os.getgid()}"
 THIRD_PARTY_SERVICE_UID = 999
 THIRD_PARTY_SERVICE_GID = 999
 THIRD_PARTY_SERVICE_UID_GID = f"{THIRD_PARTY_SERVICE_UID}:{THIRD_PARTY_SERVICE_GID}"
+
+OTEL_COLLECTOR_HOST_PORT = 14318
 
 logger = logging.getLogger(__name__)
 
@@ -907,6 +908,51 @@ class BaseController(ABC):
 
         return env_vars
 
+    def _set_up_env_for_telemetry(self) -> EnvVarsDict:
+        """
+        Sets up environment variables for the telemetry (OpenTelemetry Collector) component.
+
+        :return: Dictionary of environment variables necessary to launch the component.
+        """
+        if self._clp_config.telemetry.disable:
+            logger.info(f"Telemetry is disabled, skipping otel-collector creation...")
+            return EnvVarsDict(
+                {
+                    "CLP_DISABLE_TELEMETRY": "true",
+                    "CLP_OTEL_COLLECTOR_ENABLED": "0",
+                }
+            )
+
+        logger.info(f"Setting up environment for otel-collector...")
+
+        env_vars = EnvVarsDict()
+
+        env_vars["CLP_OTEL_COLLECTOR_ENABLED"] = "1"
+        version_file_path = self._clp_home / "VERSION"
+        clp_version = (
+            version_file_path.read_text().strip() if version_file_path.exists() else "unknown"
+        )
+
+        self._resource_attrs = {
+            "clp.deployment.id": self._instance_id,
+            "service.version": clp_version,
+            "clp.deployment.method": "docker-compose",
+            "clp.storage.engine": self._clp_config.package.storage_engine,
+        }
+
+        resource_attrs_str = ",".join(f"{k}={v}" for k, v in self._resource_attrs.items())
+        env_vars["OTEL_RESOURCE_ATTRIBUTES"] = resource_attrs_str
+
+        env_vars["CLP_TELEMETRY_ENDPOINT"] = self._clp_config.telemetry.endpoint
+        env_vars["CLP_OTEL_COLLECTOR_PORT"] = str(
+            os.environ.get("CLP_OTEL_COLLECTOR_PORT", str(OTEL_COLLECTOR_HOST_PORT))
+        )
+        env_vars["CLP_OTEL_COLLECTOR_CONF_FILE_HOST"] = str(
+            self._conf_dir / "otel-collector" / "config.yaml"
+        )
+
+        return env_vars
+
     def _read_and_update_settings_json(
         self, settings_file_path: pathlib.Path, updates: dict[str, Any]
     ) -> dict[str, Any]:
@@ -1020,31 +1066,7 @@ class DockerComposeController(BaseController):
         }
 
         # Telemetry
-        if self._clp_config.telemetry.disable:
-            env_vars["CLP_DISABLE_TELEMETRY"] = "true"
-            env_vars["CLP_OTEL_COLLECTOR_ENABLED"] = "0"
-        else:
-            env_vars["CLP_OTEL_COLLECTOR_ENABLED"] = "1"
-            version_file_path = self._clp_home / "VERSION"
-            clp_version = (
-                version_file_path.read_text().strip() if version_file_path.exists() else "unknown"
-            )
-
-            self._resource_attrs = {
-                "clp.deployment.id": self._instance_id,
-                "service.version": clp_version,
-                "clp.deployment.method": "docker-compose",
-                "clp.storage.engine": self._clp_config.package.storage_engine,
-            }
-
-            resource_attrs_str = ",".join(f"{k}={v}" for k, v in self._resource_attrs.items())
-            env_vars["OTEL_RESOURCE_ATTRIBUTES"] = resource_attrs_str
-            env_vars["OTEL_EXPORTER_OTLP_ENDPOINT"] = "http://otel-collector:4318"
-
-        env_vars["CLP_TELEMETRY_ENDPOINT"] = self._clp_config.telemetry.endpoint
-        env_vars["CLP_OTEL_COLLECTOR_CONF_FILE_HOST"] = str(
-            self._conf_dir / "otel-collector" / "config.yaml"
-        )
+        env_vars |= self._set_up_env_for_telemetry()
 
         # Paths
         aws_config_dir = self._clp_config.aws_config_directory
@@ -1214,8 +1236,11 @@ class DockerComposeController(BaseController):
 
         try:
             payload_bytes = json.dumps(payload).encode("utf-8")
+            otel_collector_port = os.environ.get(
+                "CLP_OTEL_COLLECTOR_PORT", str(OTEL_COLLECTOR_HOST_PORT)
+            )
             http_request(
-                "http://127.0.0.1:4318/v1/metrics",
+                f"http://127.0.0.1:{otel_collector_port}/v1/metrics",
                 method="POST",
                 data=payload_bytes,
                 headers={"Content-Type": "application/json"},
