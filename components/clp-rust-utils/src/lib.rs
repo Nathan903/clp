@@ -12,3 +12,4 @@ pub mod telemetry;
 pub mod types;
 
 pub use error::Error;
+pub use opentelemetry_sdk::metrics::SdkMeterProvider;

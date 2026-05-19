@@ -1,6 +1,6 @@
 use anyhow::Context;
 use clap::Parser;
-use clp_rust_utils::{clp_config::package, serde::yaml};
+use clp_rust_utils::{SdkMeterProvider, clp_config::package, serde::yaml, telemetry::shutdown_telemetry};
 
 #[derive(Parser)]
 #[command(version, about = "API Server for CLP.")]
@@ -46,6 +46,14 @@ async fn shutdown_signal() {
     }
 }
 
+struct TelemetryGuard(Option<SdkMeterProvider>);
+
+impl Drop for TelemetryGuard {
+    fn drop(&mut self) {
+        shutdown_telemetry(self.0.take());
+    }
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
@@ -53,11 +61,11 @@ async fn main() -> anyhow::Result<()> {
     let (config, credentials) = read_config_and_credentials(&args)?;
     let _guard = clp_rust_utils::logging::set_up_logging("api_server.log");
 
-    let tel_provider = clp_rust_utils::telemetry::init_telemetry(&config.telemetry)?;
+    let tel_provider = clp_rust_utils::telemetry::init_telemetry(&config.telemetry, "api-server")?;
+    let _tel_guard = TelemetryGuard(tel_provider);
 
     let meter = opentelemetry::global::meter("api-server");
     let startup_counter = meter.u64_counter("clp.service.event").build();
-    startup_counter.add(1, &[opentelemetry::KeyValue::new("type", "start")]);
 
     let api_server_config = config
         .api_server
@@ -78,12 +86,13 @@ async fn main() -> anyhow::Result<()> {
 
     let router = api_server::routes::from_client(client)?;
 
+    startup_counter.add(1, &[opentelemetry::KeyValue::new("type", "start")]);
+
     tracing::info!("Server started at {addr}");
     let serve_result = axum::serve(listener, router)
         .with_graceful_shutdown(shutdown_signal())
         .await;
 
-    clp_rust_utils::telemetry::shutdown_telemetry(tel_provider);
     serve_result?;
     Ok(())
 }

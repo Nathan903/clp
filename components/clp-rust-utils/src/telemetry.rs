@@ -1,6 +1,6 @@
 use std::env;
 
-use opentelemetry::global;
+use opentelemetry::{KeyValue, global};
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::{
     Resource,
@@ -18,7 +18,10 @@ use crate::{Error, clp_config::package::config::Telemetry};
 ///
 /// Returns an error if the OTLP metric exporter fails to build (e.g., invalid
 /// endpoint configuration or missing HTTP client support).
-pub fn init_telemetry(telemetry_config: &Telemetry) -> Result<Option<SdkMeterProvider>, Error> {
+pub fn init_telemetry(
+    telemetry_config: &Telemetry,
+    service_name: &str,
+) -> Result<Option<SdkMeterProvider>, Error> {
     if telemetry_config.disable || env::var("CLP_DISABLE_TELEMETRY").is_ok() {
         return Ok(None);
     }
@@ -35,7 +38,11 @@ pub fn init_telemetry(telemetry_config: &Telemetry) -> Result<Option<SdkMeterPro
     let reader = PeriodicReader::builder(exporter, opentelemetry_sdk::runtime::Tokio).build();
     let provider = SdkMeterProvider::builder()
         .with_reader(reader)
-        .with_resource(Resource::default())
+        .with_resource(
+            Resource::builder()
+                .with_attributes(vec![KeyValue::new("service.name", service_name)])
+                .build(),
+        )
         .build();
 
     global::set_meter_provider(provider.clone());
