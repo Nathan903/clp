@@ -7,6 +7,7 @@ import pathlib
 import socket
 import stat
 import subprocess
+import time
 import uuid
 from abc import ABC, abstractmethod
 from types import MappingProxyType
@@ -67,6 +68,7 @@ from clp_package_utils.general import (
     dump_shared_container_config,
     generate_docker_compose_container_config,
     get_clp_home,
+    http_request,
     is_retention_period_configured,
     validate_db_config,
     validate_mcp_server_config,
@@ -82,6 +84,8 @@ DEFAULT_UID_GID = f"{os.getuid()}:{os.getgid()}"
 THIRD_PARTY_SERVICE_UID = 999
 THIRD_PARTY_SERVICE_GID = 999
 THIRD_PARTY_SERVICE_UID_GID = f"{THIRD_PARTY_SERVICE_UID}:{THIRD_PARTY_SERVICE_GID}"
+
+OTEL_COLLECTOR_HOST_PORT = 14318
 
 logger = logging.getLogger(__name__)
 
@@ -904,6 +908,51 @@ class BaseController(ABC):
 
         return env_vars
 
+    def _set_up_env_for_telemetry(self) -> EnvVarsDict:
+        """
+        Sets up environment variables for the telemetry (OpenTelemetry Collector) component.
+
+        :return: Dictionary of environment variables necessary to launch the component.
+        """
+        if self._clp_config.telemetry.disable:
+            logger.info(f"Telemetry is disabled, skipping otel-collector creation...")
+            return EnvVarsDict(
+                {
+                    "CLP_DISABLE_TELEMETRY": "true",
+                    "CLP_OTEL_COLLECTOR_ENABLED": "0",
+                }
+            )
+
+        logger.info(f"Setting up environment for otel-collector...")
+
+        env_vars = EnvVarsDict()
+
+        env_vars["CLP_OTEL_COLLECTOR_ENABLED"] = "1"
+        version_file_path = self._clp_home / "VERSION"
+        clp_version = (
+            version_file_path.read_text().strip() if version_file_path.exists() else "unknown"
+        )
+
+        self._resource_attrs = {
+            "clp.deployment.id": self._instance_id,
+            "service.version": clp_version,
+            "clp.deployment.method": "docker-compose",
+            "clp.storage.engine": self._clp_config.package.storage_engine,
+        }
+
+        resource_attrs_str = ",".join(f"{k}={v}" for k, v in self._resource_attrs.items())
+        env_vars["OTEL_RESOURCE_ATTRIBUTES"] = resource_attrs_str
+
+        env_vars["CLP_TELEMETRY_ENDPOINT"] = self._clp_config.telemetry.endpoint
+        env_vars["CLP_OTEL_COLLECTOR_PORT"] = str(
+            os.environ.get("CLP_OTEL_COLLECTOR_PORT", str(OTEL_COLLECTOR_HOST_PORT))
+        )
+        env_vars["CLP_OTEL_COLLECTOR_CONF_FILE_HOST"] = str(
+            self._conf_dir / "otel-collector" / "config.yaml"
+        )
+
+        return env_vars
+
     def _read_and_update_settings_json(
         self, settings_file_path: pathlib.Path, updates: dict[str, Any]
     ) -> dict[str, Any]:
@@ -964,8 +1013,10 @@ class DockerComposeController(BaseController):
         self, clp_config: ClpConfig, instance_id: str, restart_policy: str = "on-failure:3"
     ) -> None:
         """Initializes the DockerComposeController."""
+        self._instance_id = instance_id
         self._project_name = f"clp-package-{instance_id}"
         self._restart_policy = restart_policy
+        self._resource_attrs: dict[str, Any] = {}
         super().__init__(clp_config)
 
     def set_up_env(self) -> None:
@@ -1013,6 +1064,9 @@ class DockerComposeController(BaseController):
             "CLP_PACKAGE_CONTAINER_IMAGE_REF": self._clp_config.container_image_ref,
             "CLP_PACKAGE_STORAGE_ENGINE": self._clp_config.package.storage_engine,
         }
+
+        # Telemetry
+        env_vars |= self._set_up_env_for_telemetry()
 
         # Paths
         aws_config_dir = self._clp_config.aws_config_directory
@@ -1092,6 +1146,8 @@ class DockerComposeController(BaseController):
             cwd=self._clp_home,
             check=True,
         )
+        if not self._clp_config.telemetry.disable:
+            self._emit_topology_metrics()
         logger.info("Started CLP.")
 
     def stop(self) -> None:
@@ -1139,6 +1195,58 @@ class DockerComposeController(BaseController):
         :return: The Docker Compose file name to use based on the config.
         """
         return _DEPLOYMENT_TYPE_TO_COMPOSE_FILE[self._clp_config.get_deployment_type()]
+
+    def _emit_topology_metrics(self) -> None:
+        timestamp_ns = int(time.time() * 1e9)
+        metrics = []
+
+        def add_gauge(name: str, value: int):
+            metrics.append(
+                {
+                    "name": name,
+                    "gauge": {
+                        "dataPoints": [{"asInt": str(value), "timeUnixNano": str(timestamp_ns)}]
+                    },
+                }
+            )
+
+        num_workers = self._get_num_workers()
+
+        # NOTE: Replicas are hardcoded to 1 until multi-container workers land (see #1424).
+        add_gauge("clp.deployment.compression_worker_replicas", 1)
+        add_gauge("clp.deployment.compression_worker_concurrency", num_workers)
+        add_gauge("clp.deployment.query_worker_replicas", 1)
+        add_gauge("clp.deployment.query_worker_concurrency", num_workers)
+        add_gauge("clp.deployment.reducer_replicas", 1)
+        add_gauge("clp.deployment.reducer_concurrency", num_workers)
+
+        payload = {
+            "resourceMetrics": [
+                {
+                    "resource": {"attributes": []},
+                    "scopeMetrics": [{"scope": {"name": "clp.controller"}, "metrics": metrics}],
+                }
+            ]
+        }
+
+        for k, v in {**self._resource_attrs, "service.name": "controller"}.items():
+            payload["resourceMetrics"][0]["resource"]["attributes"].append(
+                {"key": k, "value": {"stringValue": str(v)}}
+            )
+
+        try:
+            payload_bytes = json.dumps(payload).encode("utf-8")
+            otel_collector_port = os.environ.get(
+                "CLP_OTEL_COLLECTOR_PORT", str(OTEL_COLLECTOR_HOST_PORT)
+            )
+            http_request(
+                f"http://127.0.0.1:{otel_collector_port}/v1/metrics",
+                method="POST",
+                data=payload_bytes,
+                headers={"Content-Type": "application/json"},
+            )
+        except Exception as e:
+            logger.warning("Failed to emit topology metrics: %s", e)
 
 
 def get_or_create_instance_id(clp_config: ClpConfig) -> str:
