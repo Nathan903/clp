@@ -69,6 +69,7 @@ from clp_package_utils.general import (
     dump_shared_container_config,
     generate_docker_compose_container_config,
     get_clp_home,
+    http_request,
     is_retention_period_configured,
     validate_db_config,
     validate_mcp_server_config,
@@ -1021,7 +1022,9 @@ class DockerComposeController(BaseController):
         # Telemetry
         if self._clp_config.telemetry.disable:
             env_vars["CLP_DISABLE_TELEMETRY"] = "true"
+            env_vars["CLP_OTEL_COLLECTOR_ENABLED"] = "0"
         else:
+            env_vars["CLP_OTEL_COLLECTOR_ENABLED"] = "1"
             version_file_path = self._clp_home / "VERSION"
             clp_version = (
                 version_file_path.read_text().strip() if version_file_path.exists() else "unknown"
