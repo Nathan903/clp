@@ -59,6 +59,9 @@ async fn main() -> anyhow::Result<()> {
     let (config, credentials) = read_config_and_credentials(&args)?;
     let _guard = clp_rust_utils::logging::set_up_logging("log_ingestor.log");
 
+    let tel_provider = clp_rust_utils::telemetry::init_telemetry(&config.telemetry)?;
+    let _tel_guard = clp_rust_utils::telemetry::TelemetryGuard::new(tel_provider);
+
     let addr = format!("{}:{}", args.host, args.port);
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
@@ -76,8 +79,10 @@ async fn main() -> anyhow::Result<()> {
         })?
         .with_state(log_ingestor_manager_state);
     tracing::info!("Server started at {addr}");
-    axum::serve(listener, log_ingestor_router)
+    let serve_result = axum::serve(listener, log_ingestor_router)
         .with_graceful_shutdown(shutdown_signal())
-        .await?;
+        .await;
+
+    serve_result?;
     Ok(())
 }
