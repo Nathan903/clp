@@ -43,6 +43,11 @@ from job_orchestration.scheduler.job_config import (
 from job_orchestration.scheduler.task_result import CompressionTaskResult
 from job_orchestration.scheduler.utils import is_s3_based_input
 
+from opentelemetry import metrics
+
+meter = metrics.get_meter("compression-worker")
+bytes_input_counter = meter.create_counter("clp.compression.bytes_input_total")
+bytes_output_counter = meter.create_counter("clp.compression.bytes_output_total")
 
 def update_compression_task_metadata(db_cursor, task_id, kv):
     if not len(kv):
@@ -544,6 +549,11 @@ def run_clp(
 
                 if enable_s3_write:
                     archive_path.unlink()
+
+                # Increment telemetry counters
+                if last_archive_stats and s3_error is None:
+                    bytes_input_counter.add(last_archive_stats["uncompressed_size"])
+                    bytes_output_counter.add(last_archive_stats["size"])
 
             last_archive_stats = stats
 

@@ -40,6 +40,7 @@ async fn shutdown_signal() {
         .expect("failed to listen for SIGTERM");
     tokio::select! {
         _ = sigterm.recv() => {
+            tracing::info!("Received SIGTERM, initiating shutdown");
         }
         _ = tokio::signal::ctrl_c()=> {
         }

@@ -1,0 +1,57 @@
+version: "3.8"
+
+services:
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.96.0
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml
+    depends_on:
+      - clickhouse
+    restart: unless-stopped
+    ports:
+      - "4318:4318"
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.3
+    ports:
+      - "9000:9000"
+      - "8123:8123"
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      - ./clickhouse/init.sql:/docker-entrypoint-initdb.d/init.sql
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:10.4.0
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_INSTALL_PLUGINS=grafana-clickhouse-datasource
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    depends_on:
+      - clickhouse
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2.7
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - otel-collector
+    restart: unless-stopped
+
+volumes:
+  clickhouse-data:
+  grafana-data:
+  caddy-data:
+  caddy-config:

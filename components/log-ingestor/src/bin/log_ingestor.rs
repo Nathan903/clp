@@ -2,6 +2,7 @@ use anyhow::Context;
 use clap::Parser;
 use clp_rust_utils::{clp_config::package, serde::yaml};
 use log_ingestor::{ingestion_job_manager::IngestionJobManagerState, routes::create_router};
+use opentelemetry::global::meter;
 
 #[derive(Parser)]
 #[command(version, about = "log-ingestor for CLP.")]
@@ -45,9 +46,11 @@ async fn shutdown_signal() {
     let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
         .expect("failed to listen for SIGTERM");
     tokio::select! {
-        _ = sigterm.recv() => {
+        () = sig_int => {
+            tracing::info!("Received SIGINT, initiating shutdown");
         }
-        _ = tokio::signal::ctrl_c()=> {
+        () = sig_term => {
+            tracing::info!("Received SIGTERM, initiating shutdown");
         }
     }
 }
@@ -61,6 +64,17 @@ async fn main() -> anyhow::Result<()> {
 
     let tel_provider = clp_rust_utils::telemetry::init_telemetry(&config.telemetry)?;
     let _tel_guard = clp_rust_utils::telemetry::TelemetryGuard::new(tel_provider);
+
+    let meter = meter("log-ingestor");
+    let service_event_counter = meter.u64_counter("clp.service.event").build();
+    service_event_counter.add(1, &[opentelemetry::KeyValue::new("type", "start")]);
+
+    let app_state = AppState::new(
+        config,
+        credentials,
+        tel_provider,
+        service_event_counter,
+    );
 
     let addr = format!("{}:{}", args.host, args.port);
     let listener = tokio::net::TcpListener::bind(&addr)
@@ -84,5 +98,6 @@ async fn main() -> anyhow::Result<()> {
         .await;
 
     serve_result?;
+    service_event_counter.add(1, &[opentelemetry::KeyValue::new("type", "stop")]);
     Ok(())
 }

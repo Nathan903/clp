@@ -30,6 +30,12 @@ from job_orchestration.executor.utils import load_worker_config
 from job_orchestration.scheduler.job_config import ExtractIrJobConfig, ExtractJsonJobConfig
 from job_orchestration.scheduler.scheduler_data import QueryTaskStatus
 
+from opentelemetry import metrics
+
+meter = metrics.get_meter("query-worker")
+bytes_scanned_counter = meter.create_counter("clp.query.bytes_scanned_total")
+bytes_output_counter = meter.create_counter("clp.query.bytes_output_total")
+
 # Setup logging
 logger = get_task_logger(__name__)
 
@@ -243,23 +249,28 @@ def extract_stream(
             start_time=start_time,
         )
 
-    task_results, task_stdout_str = run_query_task(
+    task_results, stdout_data = run_query_task(
         sql_adapter=sql_adapter,
         logger=logger,
         clp_logs_dir=clp_logs_dir,
         task_command=task_command,
-        env_vars=core_clp_env_vars,
+        env_vars=env_vars,
         task_name=task_name,
         job_id=job_id,
         task_id=task_id,
         start_time=start_time,
     )
 
+    # TODO: Parse stdout_data if it contains bytes_scanned/bytes_output stats.
+    # Currently we increment by 0 to ensure the metrics are registered.
+    bytes_scanned_counter.add(0)
+    bytes_output_counter.add(0)
+
     if enable_s3_upload and QueryTaskStatus.SUCCEEDED == task_results.status:
         logger.info("Uploading streams to S3...")
 
         upload_error = False
-        for line in task_stdout_str.splitlines():
+        for line in stdout_data.splitlines():
             try:
                 stream_stats = json.loads(line)
             except json.decoder.JSONDecodeError:

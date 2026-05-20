@@ -1,0 +1,18 @@
+{
+  "title": "CLP Telemetry Overview",
+  "timezone": "browser",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "CLP Deployments",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "SELECT $__timeGroupAlias(timestamp, $__interval), count(distinct deployment_id) FROM clp_telemetry.otel_metrics GROUP BY 1 ORDER BY 1",
+          "format": "time_series"
+        }
+      ]
+    }
+  ]
+}

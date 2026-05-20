@@ -1,6 +1,7 @@
 use std::env;
 
 use opentelemetry::global;
+use opentelemetry::metrics::{Counter, Gauge, Meter};
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::{
     Resource,
@@ -80,4 +81,12 @@ pub fn shutdown_telemetry(provider: Option<SdkMeterProvider>) {
     {
         eprintln!("Error shutting down telemetry: {err}");
     }
+}
+
+pub fn get_u64_counter(meter: &Meter, name: &str, description: &str, unit: &str) -> Counter<u64> {
+    meter.u64_counter(name).with_description(description).with_unit(unit).init()
+}
+
+pub fn get_f64_gauge(meter: &Meter, name: &str, description: &str, unit: &str) -> Gauge<f64> {
+    meter.f64_gauge(name).with_description(description).with_unit(unit).init()
 }

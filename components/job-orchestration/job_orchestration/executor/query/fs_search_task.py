@@ -29,6 +29,12 @@ from job_orchestration.executor.utils import load_worker_config
 from job_orchestration.scheduler.job_config import SearchJobConfig
 from job_orchestration.scheduler.scheduler_data import QueryTaskResult, QueryTaskStatus
 
+from opentelemetry import metrics
+
+meter = metrics.get_meter("query-worker")
+bytes_scanned_counter = meter.create_counter("clp.query.bytes_scanned_total")
+bytes_output_counter = meter.create_counter("clp.query.bytes_output_total")
+
 # Setup logging
 logger = get_task_logger(__name__)
 
@@ -263,7 +269,7 @@ def search(
             start_time=start_time,
         )
 
-    task_results, _ = run_query_task(
+    task_results, stdout_data = run_query_task(
         sql_adapter=sql_adapter,
         logger=logger,
         clp_logs_dir=clp_logs_dir,
@@ -274,6 +280,11 @@ def search(
         task_id=task_id,
         start_time=start_time,
     )
+
+    # TODO: clo doesn't currently output bytes_scanned/bytes_output,
+    # so we just add 0 to make sure the metrics exist and can be incremented when clo supports it.
+    bytes_scanned_counter.add(0)
+    bytes_output_counter.add(0)
 
     storage_config = worker_config.stream_output.storage
     if (

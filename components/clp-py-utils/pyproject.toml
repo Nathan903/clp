@@ -15,6 +15,9 @@ dependencies = [
     "result>=0.17.0",
     "sqlalchemy>=2.0.46",
     "StrEnum>=0.4.15",
+    "opentelemetry-api>=1.0",
+    "opentelemetry-sdk>=1.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.0",
 ]
 
 [build-system]
