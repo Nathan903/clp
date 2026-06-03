@@ -1,6 +1,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use clp_rust_utils::s3::S3ObjectMetadataId;
+use opentelemetry::global;
 use sqlx::FromRow;
 
 /// Represents an entry of a buffered object metadata.
@@ -36,6 +37,8 @@ pub struct Buffer<Submitter: BufferSubmitter> {
     buf: Vec<S3ObjectMetadataId>,
     total_size: u64,
     size_threshold: u64,
+    bytes_total: opentelemetry::metrics::Counter<u64>,
+    records_total: opentelemetry::metrics::Counter<u64>,
 }
 
 impl<Submitter: BufferSubmitter> Buffer<Submitter> {
@@ -44,12 +47,15 @@ impl<Submitter: BufferSubmitter> Buffer<Submitter> {
     /// # Returns
     ///
     /// A newly created [`Buffer`] with the given submitter of type `T` and size threshold.
-    pub const fn new(submitter: Submitter, size_threshold: u64) -> Self {
+    pub fn new(submitter: Submitter, size_threshold: u64) -> Self {
+        let meter = global::meter("log-ingestor");
         Self {
             submitter,
             buf: Vec::new(),
             total_size: 0,
             size_threshold,
+            bytes_total: meter.u64_counter("clp.ingest.bytes_total").build(),
+            records_total: meter.u64_counter("clp.ingest.records_total").build(),
         }
     }
 
@@ -70,7 +76,11 @@ impl<Submitter: BufferSubmitter> Buffer<Submitter> {
         object_metadata_to_ingest: Vec<CompressionBufferEntry>,
     ) -> Result<bool> {
         let mut submission_triggered = false;
+
         for entry in object_metadata_to_ingest {
+            self.bytes_total.add(entry.size, &[]);
+            self.records_total.add(1, &[]);
+
             self.total_size += entry.size;
             self.buf.push(entry.id);
 
