@@ -1,9 +1,31 @@
+//! OpenTelemetry metrics initialization and lifecycle management.
+
 use std::env;
 
 use opentelemetry::global;
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
 
 use crate::{Error, clp_config::package::config::Telemetry};
+
+/// RAII guard that ensures [`shutdown_telemetry`] is called when the guard is dropped, even if the
+/// process unwinds or returns early.
+///
+/// Use [`init_telemetry`] to create an instance.
+pub struct TelemetryGuard {
+    provider: Option<SdkMeterProvider>,
+}
+
+impl Drop for TelemetryGuard {
+    fn drop(&mut self) {
+        shutdown_telemetry(self.provider.take());
+    }
+}
+
+impl From<Option<SdkMeterProvider>> for TelemetryGuard {
+    fn from(provider: Option<SdkMeterProvider>) -> Self {
+        Self { provider }
+    }
+}
 
 /// Initializes OpenTelemetry metrics collection with the provided configuration.
 ///
@@ -16,8 +38,11 @@ use crate::{Error, clp_config::package::config::Telemetry};
 ///
 /// # Errors
 ///
+/// Returns an error if:
+///
 /// * [`Error::TelemetryExporterBuildError`] if the OTLP metric exporter fails to build
 ///   (e.g., invalid endpoint configuration or missing HTTP client support).
+/// * Forwards [`opentelemetry_otlp::OtlpMetricPipeline::build`]'s return values on failure.
 pub fn init_telemetry(telemetry_config: &Telemetry) -> Result<Option<TelemetryGuard>, Error> {
     if telemetry_config.disable
         || env::var("CLP_DISABLE_TELEMETRY")
@@ -38,26 +63,6 @@ pub fn init_telemetry(telemetry_config: &Telemetry) -> Result<Option<TelemetryGu
 
     global::set_meter_provider(provider.clone());
     Ok(Some(TelemetryGuard::from(Some(provider))))
-}
-
-/// RAII guard that ensures [`shutdown_telemetry`] is called when the guard is dropped, even if the
-/// process unwinds or returns early.
-///
-/// Use [`init_telemetry`] to create an instance.
-pub struct TelemetryGuard {
-    provider: Option<SdkMeterProvider>,
-}
-
-impl Drop for TelemetryGuard {
-    fn drop(&mut self) {
-        shutdown_telemetry(self.provider.take());
-    }
-}
-
-impl From<Option<SdkMeterProvider>> for TelemetryGuard {
-    fn from(provider: Option<SdkMeterProvider>) -> Self {
-        Self { provider }
-    }
 }
 
 /// Shuts down the given meter provider, flushing any pending metric exports.
