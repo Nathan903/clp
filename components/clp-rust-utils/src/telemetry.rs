@@ -13,14 +13,18 @@ const TELEMETRY_DISABLE_VALUES: [&str; 4] = ["1", "true", "yes", "y"];
 
 /// Initializes OpenTelemetry metrics collection with the provided configuration.
 ///
-/// Returns `Ok(None)` if telemetry is disabled, `Ok(Some(provider))` on success,
+/// Returns `Ok(None)` if telemetry is disabled, `Ok(Some(guard))` on success,
 /// or an `Err` if the metric exporter cannot be built.
+///
+/// The returned [`TelemetryGuard`] will shut down the meter provider and flush
+/// pending metric exports when dropped. Callers should bind it to a variable
+/// (e.g., `let _guard = ...`) to keep it alive for the desired scope.
 ///
 /// # Errors
 ///
 /// Returns an error if the OTLP metric exporter fails to build (e.g., invalid
 /// endpoint configuration or missing HTTP client support).
-pub fn init_telemetry(telemetry_config: &Telemetry) -> Result<Option<SdkMeterProvider>, Error> {
+pub fn init_telemetry(telemetry_config: &Telemetry) -> Result<Option<TelemetryGuard>, Error> {
     if telemetry_config.disable
         || env::var("CLP_DISABLE_TELEMETRY")
             .is_ok_and(|v| TELEMETRY_DISABLE_VALUES.contains(&v.trim().to_lowercase().as_str()))
@@ -39,20 +43,17 @@ pub fn init_telemetry(telemetry_config: &Telemetry) -> Result<Option<SdkMeterPro
     let provider = SdkMeterProvider::builder().with_reader(reader).build();
 
     global::set_meter_provider(provider.clone());
-    Ok(Some(provider))
+    Ok(Some(TelemetryGuard::from(Some(provider))))
 }
 
 /// RAII guard that ensures [`shutdown_telemetry`] is called when the guard is
 /// dropped, even if the process unwinds or returns early.
+///
+/// Use [`init_telemetry`] to create an instance.
 pub struct TelemetryGuard(Option<SdkMeterProvider>);
 
-impl TelemetryGuard {
-    /// Creates a new guard wrapping the given meter provider.
-    ///
-    /// When this guard is dropped, [`shutdown_telemetry`] will be called on the
-    /// inner provider, flushing any pending metric exports.
-    #[must_use]
-    pub const fn new(provider: Option<SdkMeterProvider>) -> Self {
+impl From<Option<SdkMeterProvider>> for TelemetryGuard {
+    fn from(provider: Option<SdkMeterProvider>) -> Self {
         Self(provider)
     }
 }
