@@ -316,6 +316,7 @@ def search(
                     stats = data["stats"]
                     bytes_scanned = stats.get("bytes_scanned", None)
                     bytes_output = stats.get("bytes_output", None)
+                    break
             except json.JSONDecodeError:
                 pass
 
