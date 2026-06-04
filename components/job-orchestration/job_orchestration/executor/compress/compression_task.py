@@ -9,7 +9,7 @@ from typing import Any
 
 from opentelemetry import metrics
 
-meter = metrics.get_meter("compression-worker")
+meter = metrics.get_meter("clp_py_utils")
 bytes_input_counter = meter.create_counter("clp.compression.bytes_input_total", unit="By")
 bytes_output_counter = meter.create_counter("clp.compression.bytes_output_total", unit="By")
 

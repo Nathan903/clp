@@ -8,7 +8,7 @@ from celery.app.task import Task
 from celery.utils.log import get_task_logger
 from opentelemetry import metrics
 
-meter = metrics.get_meter("query-worker")
+meter = metrics.get_meter("clp_py_utils")
 bytes_scanned_counter = meter.create_counter("clp.query.bytes_scanned_total", unit="By")
 bytes_output_counter = meter.create_counter("clp.query.bytes_output_total", unit="By")
 from contextlib import closing
