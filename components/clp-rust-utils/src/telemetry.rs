@@ -50,17 +50,19 @@ pub fn init_telemetry(telemetry_config: &Telemetry) -> Result<Option<TelemetryGu
 /// dropped, even if the process unwinds or returns early.
 ///
 /// Use [`init_telemetry`] to create an instance.
-pub struct TelemetryGuard(Option<SdkMeterProvider>);
+pub struct TelemetryGuard {
+    provider: Option<SdkMeterProvider>,
+}
 
 impl From<Option<SdkMeterProvider>> for TelemetryGuard {
     fn from(provider: Option<SdkMeterProvider>) -> Self {
-        Self(provider)
+        Self { provider }
     }
 }
 
 impl Drop for TelemetryGuard {
     fn drop(&mut self) {
-        shutdown_telemetry(self.0.take());
+        shutdown_telemetry(self.provider.take());
     }
 }
 
