@@ -1,4 +1,5 @@
 import datetime
+import json
 import os
 from pathlib import Path
 from typing import Any
@@ -270,7 +271,7 @@ def search(
             start_time=start_time,
         )
 
-    task_results, _ = run_query_task(
+    task_results, stdout_data = run_query_task(
         sql_adapter=sql_adapter,
         logger=logger,
         clp_logs_dir=clp_logs_dir,
@@ -298,8 +299,6 @@ def search(
     bytes_output = 0
 
     if stdout_data:
-        import json
-
         for line in stdout_data.splitlines():
             try:
                 data = json.loads(line)
