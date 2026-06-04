@@ -31,18 +31,15 @@ impl From<Option<SdkMeterProvider>> for TelemetryGuard {
 ///
 /// # Returns
 ///
-/// * `Ok(None)` if telemetry is disabled.
-/// * `Ok(Some(`[`TelemetryGuard`]`))` on success. The guard will shut down the meter provider and
-///   flush pending metric exports when dropped. Callers should bind it to a variable
-///   (e.g., `let _guard = ...`) to keep it alive for the desired scope.
+/// An optional [`TelemetryGuard`] on success (`None` if telemetry is disabled). The guard will shut
+/// down the meter provider and flush pending metric exports when dropped. Callers should bind it to
+/// a variable (e.g., `let _guard = ...`) to keep it alive for the desired scope.
 ///
 /// # Errors
 ///
 /// Returns an error if:
 ///
-/// * [`Error::TelemetryExporterBuildError`] if the OTLP metric exporter fails to build
-///   (e.g., invalid endpoint configuration or missing HTTP client support).
-/// * Forwards [`opentelemetry_otlp::OtlpMetricPipeline::build`]'s return values on failure.
+/// * Forwards [`opentelemetry_otlp::MetricExporterBuilder::build`]'s return values on failure.
 pub fn init_telemetry(telemetry_config: &Telemetry) -> Result<Option<TelemetryGuard>, Error> {
     if telemetry_config.disable
         || env::var("CLP_DISABLE_TELEMETRY")
