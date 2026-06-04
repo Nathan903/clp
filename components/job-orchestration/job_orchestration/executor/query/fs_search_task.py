@@ -299,10 +299,12 @@ def search(
     bytes_output = 0
 
     if stdout_data:
-        for line in stdout_data.splitlines():
+        for line in reversed(stdout_data.rsplit('\n', 10)):
+            if '"stats"' not in line:
+                continue
             try:
                 data = json.loads(line)
-                if "stats" in data:
+                if isinstance(data, dict) and "stats" in data:
                     stats = data["stats"]
                     bytes_scanned = stats.get("bytes_scanned", 0)
                     bytes_output = stats.get("bytes_output", 0)
