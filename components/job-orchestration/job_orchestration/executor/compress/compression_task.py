@@ -10,8 +10,16 @@ from typing import Any
 from opentelemetry import metrics
 
 meter = metrics.get_meter("clp_py_utils")
-bytes_input_counter = meter.create_counter("clp.compression.bytes_input_total", unit="By")
-bytes_output_counter = meter.create_counter("clp.compression.bytes_output_total", unit="By")
+bytes_input_counter = meter.create_counter(
+    "clp.compression.bytes_input_total", 
+    unit="By",
+    description="Total uncompressed bytes processed by compression"
+)
+bytes_output_counter = meter.create_counter(
+    "clp.compression.bytes_output_total", 
+    unit="By",
+    description="Total compressed bytes output by compression"
+)
 
 from clp_py_utils.clp_config import (
     CLP_DB_PASS_ENV_VAR_NAME,
