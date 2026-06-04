@@ -12,7 +12,7 @@ from opentelemetry import metrics
 meter = metrics.get_meter("clp_py_utils")
 bytes_scanned_counter = meter.create_counter("clp.query.bytes_scanned_total", unit="By")
 bytes_output_counter = meter.create_counter("clp.query.bytes_output_total", unit="By")
-from contextlib import closing
+
 
 from clp_py_utils.clp_config import (
     Database,
@@ -21,7 +21,7 @@ from clp_py_utils.clp_config import (
     WorkerConfig,
 )
 from clp_py_utils.clp_logging import set_logging_level
-from clp_py_utils.clp_metadata_db_utils import get_archives_table_name
+
 from clp_py_utils.s3_utils import (
     generate_s3_url,
     get_credential_env_vars,
