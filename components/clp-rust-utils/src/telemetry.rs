@@ -68,6 +68,6 @@ pub fn shutdown_telemetry(provider: Option<SdkMeterProvider>) {
     if let Some(p) = provider
         && let Err(err) = p.shutdown()
     {
-        eprintln!("Error shutting down telemetry: {err}");
+        tracing::error!(err = ? err, "Error shutting down telemetry.");
     }
 }
