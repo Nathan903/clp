@@ -7,12 +7,6 @@ use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
 
 use crate::{Error, clp_config::package::config::Telemetry};
 
-/// Values accepted by `CLP_DISABLE_TELEMETRY` and `DO_NOT_TRACK` to disable telemetry.
-///
-/// NOTE: This must be kept consistent with the Python implementation in
-/// `clp_package_utils/scripts/start_clp.py`.
-const TELEMETRY_DISABLE_VALUES: [&str; 4] = ["1", "true", "yes", "y"];
-
 /// RAII guard that ensures [`shutdown_telemetry`] is called when the guard is dropped, even if the
 /// process unwinds or returns early.
 ///
@@ -51,14 +45,10 @@ impl From<Option<SdkMeterProvider>> for TelemetryGuard {
 /// * Forwards [`opentelemetry_otlp::OtlpMetricPipeline::build`]'s return values on failure.
 pub fn init_telemetry(telemetry_config: &Telemetry) -> Result<Option<TelemetryGuard>, Error> {
     if telemetry_config.disable
-        || env::var("CLP_DISABLE_TELEMETRY").is_ok_and(|v| {
-            let val = v.trim().to_lowercase();
-            TELEMETRY_DISABLE_VALUES.contains(&val.as_str())
-        })
-        || env::var("DO_NOT_TRACK").is_ok_and(|v| {
-            let val = v.trim().to_lowercase();
-            TELEMETRY_DISABLE_VALUES.contains(&val.as_str())
-        })
+        || env::var("CLP_DISABLE_TELEMETRY")
+            .is_ok_and(|v| TELEMETRY_DISABLE_VALUES.contains(&v.trim().to_lowercase().as_str()))
+        || env::var("DO_NOT_TRACK")
+            .is_ok_and(|v| TELEMETRY_DISABLE_VALUES.contains(&v.trim().to_lowercase().as_str()))
     {
         return Ok(None);
     }
@@ -87,4 +77,8 @@ pub fn shutdown_telemetry(provider: Option<SdkMeterProvider>) {
     }
 }
 
- 
+/// Values accepted by `CLP_DISABLE_TELEMETRY` and `DO_NOT_TRACK` to disable telemetry.
+///
+/// NOTE: This must be kept consistent with the Python implementation in
+/// `clp_package_utils/scripts/start_clp.py`.
+const TELEMETRY_DISABLE_VALUES: [&str; 4] = ["1", "true", "yes", "y"];
