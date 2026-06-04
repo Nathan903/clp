@@ -332,7 +332,22 @@ def search(
             bytes_output = output_path.stat().st_size
 
     status_str = "success" if QueryTaskStatus.SUCCEEDED == task_results.status else "failure"
-    attributes = {"status": status_str}
+    
+    storage_engine_str = "clp_s" if worker_config.package.storage_engine == StorageEngine.CLP_S else "clp"
+    if search_config.aggregation_config is not None:
+        output_type = "reducer"
+    elif search_config.network_address is not None:
+        output_type = "network"
+    elif search_config.write_to_file:
+        output_type = "file"
+    else:
+        output_type = "results_cache"
+        
+    attributes = {
+        "status": status_str,
+        "clp.storage.engine": storage_engine_str,
+        "clp.query.output_type": output_type
+    }
     bytes_scanned_counter.add(bytes_scanned, attributes)
     bytes_output_counter.add(bytes_output, attributes)
 
