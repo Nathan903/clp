@@ -6,6 +6,13 @@ from typing import Any
 import msgpack
 from celery.app.task import Task
 from celery.utils.log import get_task_logger
+from opentelemetry import metrics
+
+meter = metrics.get_meter("query-worker")
+bytes_scanned_counter = meter.create_counter("clp.query.bytes_scanned_total")
+bytes_output_counter = meter.create_counter("clp.query.bytes_output_total")
+from contextlib import closing
+
 from clp_py_utils.clp_config import (
     Database,
     StorageEngine,
@@ -13,6 +20,7 @@ from clp_py_utils.clp_config import (
     WorkerConfig,
 )
 from clp_py_utils.clp_logging import set_logging_level
+from clp_py_utils.clp_metadata_db_utils import get_archives_table_name
 from clp_py_utils.s3_utils import (
     generate_s3_url,
     get_credential_env_vars,
@@ -284,5 +292,31 @@ def search(
         src_file = Path(worker_config.stream_output.get_directory()) / job_id / archive_id
         dest_path = f"{job_id}/{archive_id}"
         upload_results_to_s3(task_results, s3_config, src_file, dest_path)
+
+    # Telemetry
+    bytes_scanned = 0
+    try:
+        table_prefix = clp_metadata_db_conn_params.get("table_prefix", "clp")
+        archives_table_name = get_archives_table_name(table_prefix, dataset)
+        with closing(sql_adapter.create_connection(True)) as db_conn, closing(db_conn.cursor(dictionary=True)) as db_cursor:
+            db_cursor.execute(f"SELECT uncompressed_size FROM {archives_table_name} WHERE id=%s", (archive_id,))
+            result = db_cursor.fetchone()
+            if result:
+                bytes_scanned = result["uncompressed_size"]
+    except Exception as e:
+        logger.warning(f"Failed to fetch uncompressed_size for archive {archive_id}: {e}")
+
+    bytes_output = 0
+    if search_config.write_to_file:
+        output_path = Path(worker_config.stream_output.get_directory()) / job_id / archive_id
+        if output_path.exists():
+            bytes_output = output_path.stat().st_size
+    else:
+        bytes_output = len(stdout_data.encode("utf-8"))
+
+    status_str = "success" if QueryTaskStatus.SUCCEEDED == task_results.status else "failure"
+    attributes = {"status": status_str}
+    bytes_scanned_counter.add(bytes_scanned, attributes)
+    bytes_output_counter.add(bytes_output, attributes)
 
     return task_results.model_dump()
