@@ -1,0 +1,67 @@
+commit 039a82a0d0b643261104aff69348a9f990b40f3d
+Author: Nathan <30803215+Nathan903@users.noreply.github.com>
+Date:   Wed Jun 3 19:32:06 2026 -0400
+
+    rust instrumentation (#17)
+    
+    * pr3 first draft
+    
+    * fix rust
+    
+    * fix rabbit
+    
+    * count bytes and records
+    
+    * fallback
+    
+    * fix
+    
+    * dont initialize everytime
+    
+    * lint
+    
+    lint
+    
+    * Update telemetry.rs
+    
+    * fix1
+    
+    * fix copilot suggestions
+    
+    * Update Cargo.lock
+    
+    * trash commit
+    
+    * Revert "trash commit"
+    
+    This reverts commit ab64a60b49f51b5ddcad79710fa25ba6f1cde5eb.
+    
+    * rust: upgrade sdk
+    
+    * fix
+    
+    * lock cargo
+    
+    * simplify
+    
+    * lint
+    
+    * fix panic issue
+    
+    * cargo.lock
+    
+    ---------
+    
+    Co-authored-by: Junhao Liao <junhao.liao@yscope.com>
+
+Cargo.lock
+components/api-server/Cargo.toml
+components/api-server/src/bin/api_server.rs
+components/api-server/src/error.rs
+components/clp-rust-utils/Cargo.toml
+components/clp-rust-utils/src/error.rs
+components/clp-rust-utils/src/lib.rs
+components/clp-rust-utils/src/telemetry.rs
+components/log-ingestor/Cargo.toml
+components/log-ingestor/src/bin/log_ingestor.rs
+components/log-ingestor/src/compression/buffer.rs

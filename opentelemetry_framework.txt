@@ -1,0 +1,32 @@
+commit a96f97551bf074e185c37905dd33d54d29711e9b
+Author: Nathan <30803215+Nathan903@users.noreply.github.com>
+Date:   Sat May 30 21:40:58 2026 -0400
+
+    feat(deployment): Add OpenTelemetry Collector. (#2278)
+    
+    Co-authored-by: Junhao Liao <junhao.liao@yscope.com>
+
+components/clp-package-utils/clp_package_utils/controller.py
+components/clp-package-utils/clp_package_utils/general.py
+components/clp-package-utils/clp_package_utils/scripts/start_clp.py
+components/clp-py-utils/clp_py_utils/clp_config.py
+components/clp-py-utils/clp_py_utils/initialize-orchestration-db.py
+components/package-template/src/etc/clp-config.template.json.yaml
+components/package-template/src/etc/clp-config.template.text.yaml
+components/package-template/src/etc/otel-collector/config.yaml
+docs/src/user-docs/reference-telemetry.md
+tools/deployment/package-helm/Chart.yaml
+tools/deployment/package-helm/templates/_helpers.tpl
+tools/deployment/package-helm/templates/api-server-deployment.yaml
+tools/deployment/package-helm/templates/configmap.yaml
+tools/deployment/package-helm/templates/instance-id-configmap.yaml
+tools/deployment/package-helm/templates/log-ingestor-deployment.yaml
+tools/deployment/package-helm/templates/otel-collector-deployment.yaml
+tools/deployment/package-helm/templates/otel-collector-service.yaml
+tools/deployment/package-helm/templates/topology-metrics-emitter-job.yaml
+tools/deployment/package-helm/values.yaml
+tools/deployment/package/docker-compose-all.yaml
+tools/deployment/package/docker-compose-base.yaml
+tools/deployment/package/docker-compose-spider-base.yaml
+tools/deployment/package/docker-compose-spider.yaml
+tools/deployment/package/docker-compose.yaml
