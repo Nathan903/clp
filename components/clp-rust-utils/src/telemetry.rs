@@ -32,8 +32,7 @@ pub fn init_telemetry(telemetry_config: &Telemetry) -> Result<Option<SdkMeterPro
 
     let exporter = opentelemetry_otlp::MetricExporter::builder()
         .with_http()
-        .build()
-        .map_err(|e| Error::TelemetryExporterBuild(e.to_string()))?;
+        .build()?;
 
     let reader = PeriodicReader::builder(exporter).build();
 
