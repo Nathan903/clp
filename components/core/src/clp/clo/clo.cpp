@@ -82,7 +82,8 @@ static SearchFilesResult search_file(
         Query& query,
         Archive& archive,
         MetadataDB::FileIterator& file_metadata_ix,
-        std::unique_ptr<OutputHandler>& output_handler
+        std::unique_ptr<OutputHandler>& output_handler,
+        size_t& total_bytes_output
 );
 /**
  * Searches all files referenced by a given database cursor
@@ -97,7 +98,9 @@ static void search_files(
         Archive& archive,
         MetadataDB::FileIterator& file_metadata_ix,
         std::unique_ptr<OutputHandler>& output_handler,
-        std::set<clp::segment_id_t> const& segments_to_search
+        std::set<clp::segment_id_t> const& segments_to_search,
+        size_t& total_bytes_scanned,
+        size_t& total_bytes_output
 );
 /**
  * Searches an archive with the given path
@@ -387,7 +390,8 @@ static SearchFilesResult search_file(
         Query& query,
         Archive& archive,
         MetadataDB::FileIterator& file_metadata_ix,
-        std::unique_ptr<OutputHandler>& output_handler
+        std::unique_ptr<OutputHandler>& output_handler,
+        size_t& total_bytes_output
 ) {
     File compressed_file;
     Message encoded_message;
@@ -415,6 +419,7 @@ static SearchFilesResult search_file(
             decompressed_message
     ))
     {
+        total_bytes_output += decompressed_message.length();
         if (ErrorCode_Success
             != output_handler->add_result(
                     compressed_file.get_orig_path(),
@@ -437,7 +442,9 @@ void search_files(
         Archive& archive,
         MetadataDB::FileIterator& file_metadata_ix,
         std::unique_ptr<OutputHandler>& output_handler,
-        std::set<clp::segment_id_t> const& segments_to_search
+        std::set<clp::segment_id_t> const& segments_to_search,
+        size_t& total_bytes_scanned,
+        size_t& total_bytes_output
 ) {
     if (query.contains_sub_queries()) {
         for (; file_metadata_ix.has_next(); file_metadata_ix.next()) {
@@ -449,7 +456,9 @@ void search_files(
                 continue;
             }
 
-            auto result = search_file(query, archive, file_metadata_ix, output_handler);
+            total_bytes_scanned += file_metadata_ix.get_num_uncompressed_bytes();
+
+            auto result = search_file(query, archive, file_metadata_ix, output_handler, total_bytes_output);
             if (SearchFilesResult::OpenFailure == result) {
                 continue;
             }
@@ -463,7 +472,9 @@ void search_files(
                 continue;
             }
 
-            auto result = search_file(query, archive, file_metadata_ix, output_handler);
+            total_bytes_scanned += file_metadata_ix.get_num_uncompressed_bytes();
+
+            auto result = search_file(query, archive, file_metadata_ix, output_handler, total_bytes_output);
             if (SearchFilesResult::OpenFailure == result) {
                 continue;
             }
@@ -549,12 +560,16 @@ static bool search_archive(
             true
     );
     auto& file_metadata_ix = *file_metadata_ix_ptr;
+    size_t total_bytes_scanned = 0;
+    size_t total_bytes_output = 0;
     search_files(
             query,
             archive_reader,
             file_metadata_ix,
             output_handler,
-            ids_of_segments_to_search
+            ids_of_segments_to_search,
+            total_bytes_scanned,
+            total_bytes_output
     );
     file_metadata_ix_ptr.reset(nullptr);
 
@@ -568,6 +583,12 @@ static bool search_archive(
         );
         return false;
     }
+
+    nlohmann::json json_msg;
+    json_msg["stats"]["bytes_scanned"] = total_bytes_scanned;
+    json_msg["stats"]["bytes_output"] = total_bytes_output;
+    std::cout << json_msg.dump(-1, ' ', true, nlohmann::json::error_handler_t::ignore) << std::endl;
+
     return true;
 }
 

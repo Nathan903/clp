@@ -5,6 +5,7 @@ from opentelemetry import metrics
 from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+from opentelemetry.metrics import NoOpMeterProvider
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +22,8 @@ def init_telemetry() -> None:
     disable_env_var = os.environ.get("CLP_DISABLE_TELEMETRY", "").strip().lower()
     dnt_env_var = os.environ.get("DO_NOT_TRACK", "").strip().lower()
     if disable_env_var in TELEMETRY_DISABLE_VALUES or dnt_env_var in TELEMETRY_DISABLE_VALUES:
+        metrics.set_meter_provider(NoOpMeterProvider())
+        logger.debug("OpenTelemetry metrics explicitly disabled.")
         return
 
     try:
@@ -38,6 +41,12 @@ def shutdown_telemetry() -> None:
     Shuts down the meter provider, flushing any pending metric exports.
     """
     provider = metrics.get_meter_provider()
+    if hasattr(provider, "force_flush"):
+        try:
+            provider.force_flush()
+        except Exception as e:
+            logger.warning(f"Failed to force flush OpenTelemetry metrics: {e}")
+
     if hasattr(provider, "shutdown"):
         try:
             provider.shutdown()

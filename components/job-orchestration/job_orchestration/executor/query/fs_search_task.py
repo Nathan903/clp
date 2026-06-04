@@ -295,24 +295,41 @@ def search(
 
     # Telemetry
     bytes_scanned = 0
-    try:
-        table_prefix = clp_metadata_db_conn_params.get("table_prefix", "clp")
-        archives_table_name = get_archives_table_name(table_prefix, dataset)
-        with closing(sql_adapter.create_connection(True)) as db_conn, closing(db_conn.cursor(dictionary=True)) as db_cursor:
-            db_cursor.execute(f"SELECT uncompressed_size FROM {archives_table_name} WHERE id=%s", (archive_id,))
-            result = db_cursor.fetchone()
-            if result:
-                bytes_scanned = result["uncompressed_size"]
-    except Exception as e:
-        logger.warning(f"Failed to fetch uncompressed_size for archive {archive_id}: {e}")
-
     bytes_output = 0
-    if search_config.write_to_file:
+
+    if stdout_data:
+        import json
+        for line in stdout_data.splitlines():
+            try:
+                data = json.loads(line)
+                if "stats" in data:
+                    stats = data["stats"]
+                    bytes_scanned = stats.get("bytes_scanned", 0)
+                    bytes_output = stats.get("bytes_output", 0)
+            except json.JSONDecodeError:
+                pass
+
+    if bytes_scanned == 0:
+        try:
+            table_prefix = clp_metadata_db_conn_params.get("table_prefix", "clp")
+            archives_table_name = get_archives_table_name(table_prefix, dataset)
+            with (
+                closing(sql_adapter.create_connection(True)) as db_conn,
+                closing(db_conn.cursor(dictionary=True)) as db_cursor,
+            ):
+                db_cursor.execute(
+                    f"SELECT uncompressed_size FROM {archives_table_name} WHERE id=%s", (archive_id,)
+                )
+                result = db_cursor.fetchone()
+                if result:
+                    bytes_scanned = result["uncompressed_size"]
+        except Exception as e:
+            logger.warning(f"Failed to fetch uncompressed_size for archive {archive_id}: {e}")
+
+    if bytes_output == 0 and search_config.write_to_file:
         output_path = Path(worker_config.stream_output.get_directory()) / job_id / archive_id
         if output_path.exists():
             bytes_output = output_path.stat().st_size
-    else:
-        bytes_output = len(stdout_data.encode("utf-8"))
 
     status_str = "success" if QueryTaskStatus.SUCCEEDED == task_results.status else "failure"
     attributes = {"status": status_str}
