@@ -458,7 +458,13 @@ void search_files(
 
             total_bytes_scanned += file_metadata_ix.get_num_uncompressed_bytes();
 
-            auto result = search_file(query, archive, file_metadata_ix, output_handler, total_bytes_output);
+            auto result = search_file(
+                    query,
+                    archive,
+                    file_metadata_ix,
+                    output_handler,
+                    total_bytes_output
+            );
             if (SearchFilesResult::OpenFailure == result) {
                 continue;
             }
@@ -474,7 +480,13 @@ void search_files(
 
             total_bytes_scanned += file_metadata_ix.get_num_uncompressed_bytes();
 
-            auto result = search_file(query, archive, file_metadata_ix, output_handler, total_bytes_output);
+            auto result = search_file(
+                    query,
+                    archive,
+                    file_metadata_ix,
+                    output_handler,
+                    total_bytes_output
+            );
             if (SearchFilesResult::OpenFailure == result) {
                 continue;
             }
