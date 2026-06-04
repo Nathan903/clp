@@ -78,10 +78,8 @@ async fn main() -> anyhow::Result<()> {
         })?
         .with_state(log_ingestor_manager_state);
     tracing::info!("Server started at {addr}");
-    let serve_result = axum::serve(listener, log_ingestor_router)
+    axum::serve(listener, log_ingestor_router)
         .with_graceful_shutdown(shutdown_signal())
-        .await;
-
-    serve_result?;
+        .await?;
     Ok(())
 }

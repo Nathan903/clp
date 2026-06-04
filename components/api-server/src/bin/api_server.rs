@@ -79,10 +79,8 @@ async fn main() -> anyhow::Result<()> {
     startup_counter.add(1, &[opentelemetry::KeyValue::new("type", "start")]);
 
     tracing::info!("Server started at {addr}");
-    let serve_result = axum::serve(listener, router)
+    axum::serve(listener, router)
         .with_graceful_shutdown(shutdown_signal())
-        .await;
-
-    serve_result?;
+        .await?;
     Ok(())
 }
