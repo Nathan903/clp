@@ -299,6 +299,7 @@ def search(
 
     if stdout_data:
         import json
+
         for line in stdout_data.splitlines():
             try:
                 data = json.loads(line)
@@ -318,7 +319,8 @@ def search(
                 closing(db_conn.cursor(dictionary=True)) as db_cursor,
             ):
                 db_cursor.execute(
-                    f"SELECT uncompressed_size FROM {archives_table_name} WHERE id=%s", (archive_id,)
+                    f"SELECT uncompressed_size FROM {archives_table_name} WHERE id=%s",
+                    (archive_id,),
                 )
                 result = db_cursor.fetchone()
                 if result:
@@ -332,8 +334,10 @@ def search(
             bytes_output = output_path.stat().st_size
 
     status_str = "success" if QueryTaskStatus.SUCCEEDED == task_results.status else "failure"
-    
-    storage_engine_str = "clp_s" if worker_config.package.storage_engine == StorageEngine.CLP_S else "clp"
+
+    storage_engine_str = (
+        "clp_s" if worker_config.package.storage_engine == StorageEngine.CLP_S else "clp"
+    )
     if search_config.aggregation_config is not None:
         output_type = "reducer"
     elif search_config.network_address is not None:
@@ -342,11 +346,11 @@ def search(
         output_type = "file"
     else:
         output_type = "results_cache"
-        
+
     attributes = {
         "status": status_str,
         "clp.storage.engine": storage_engine_str,
-        "clp.query.output_type": output_type
+        "clp.query.output_type": output_type,
     }
     bytes_scanned_counter.add(bytes_scanned, attributes)
     bytes_output_counter.add(bytes_output, attributes)

@@ -3,9 +3,9 @@ import os
 
 from opentelemetry import metrics
 from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
+from opentelemetry.metrics import NoOpMeterProvider
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
-from opentelemetry.metrics import NoOpMeterProvider
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +15,7 @@ TELEMETRY_DISABLE_VALUES = {"1", "true", "yes", "y"}
 def init_telemetry() -> None:
     """
     Initializes OpenTelemetry metrics collection with the provided configuration.
-    
+
     If telemetry is disabled via environment variables (CLP_DISABLE_TELEMETRY or DO_NOT_TRACK),
     this function does nothing.
     """
