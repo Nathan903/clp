@@ -43,13 +43,13 @@ def _sort_json_keys_and_rows(json_fp: Path) -> IO[str]:
     """
     import json
     lines = []
-    with open(json_fp, 'r') as f:
+    with open(json_fp, "r") as f:
         for line in f:
             if not line.strip():
                 continue
             try:
                 obj = json.loads(line)
-                lines.append(json.dumps(obj, separators=(',', ':'), sort_keys=True))
+                lines.append(json.dumps(obj, separators=(",", ":"), sort_keys=True))
             except json.JSONDecodeError:
                 lines.append(line.strip())
 
