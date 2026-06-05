@@ -7,6 +7,12 @@ import subprocess
 from contextlib import closing
 from typing import Any
 
+from opentelemetry import metrics
+
+meter = metrics.get_meter("clp_py_utils")
+bytes_input_counter = meter.create_counter("clp.compression.bytes_input_total", unit="By")
+bytes_output_counter = meter.create_counter("clp.compression.bytes_output_total", unit="By")
+
 from clp_py_utils.clp_config import (
     CLP_DB_PASS_ENV_VAR_NAME,
     CLP_DB_USER_ENV_VAR_NAME,
@@ -655,5 +661,10 @@ def compression_entry_point(
 
     if CompressionTaskStatus.FAILED == compression_task_status:
         compression_task_result.error_message = worker_output["error_message"]
+
+    status_str = "success" if CompressionTaskStatus.SUCCEEDED == compression_task_status else "failure"
+    attributes = {"status": status_str}
+    bytes_input_counter.add(worker_output.get("total_uncompressed_size", 0), attributes)
+    bytes_output_counter.add(worker_output.get("total_compressed_size", 0), attributes)
 
     return compression_task_result.model_dump()

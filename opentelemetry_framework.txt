@@ -1,0 +1,1213 @@
+commit a96f97551bf074e185c37905dd33d54d29711e9b
+Author: Nathan <30803215+Nathan903@users.noreply.github.com>
+Date:   Sat May 30 21:40:58 2026 -0400
+
+    feat(deployment): Add OpenTelemetry Collector. (#2278)
+    
+    Co-authored-by: Junhao Liao <junhao.liao@yscope.com>
+
+diff --git a/components/clp-package-utils/clp_package_utils/controller.py b/components/clp-package-utils/clp_package_utils/controller.py
+index 997b8593..4f31cbf4 100644
+--- a/components/clp-package-utils/clp_package_utils/controller.py
++++ b/components/clp-package-utils/clp_package_utils/controller.py
+@@ -7,6 +7,7 @@ import pathlib
+ import socket
+ import stat
+ import subprocess
++import time
+ import uuid
+ from abc import ABC, abstractmethod
+ from types import MappingProxyType
+@@ -37,6 +38,7 @@ from clp_py_utils.clp_config import (
+     LOG_INGESTOR_COMPONENT_NAME,
+     MCP_SERVER_COMPONENT_NAME,
+     OrchestrationType,
++    OTEL_COLLECTOR_COMPONENT_NAME,
+     QUERY_JOBS_TABLE_NAME,
+     QUERY_SCHEDULER_COMPONENT_NAME,
+     QUERY_WORKER_COMPONENT_NAME,
+@@ -67,6 +69,7 @@ from clp_package_utils.general import (
+     dump_shared_container_config,
+     generate_docker_compose_container_config,
+     get_clp_home,
++    http_request,
+     is_retention_period_configured,
+     validate_db_config,
+     validate_mcp_server_config,
+@@ -904,6 +907,122 @@ class BaseController(ABC):
+ 
+         return env_vars
+ 
++    def _set_up_env_for_otel_collector_bundling(self) -> EnvVarsDict:
++        """
++        Sets up environment variables for bundling the OpenTelemetry Collector component.
++
++        :return: Dictionary of environment variables necessary to bundle the component.
++        """
++        component_name = OTEL_COLLECTOR_COMPONENT_NAME
++
++        if self._clp_config.telemetry.disable:
++            logger.info("Telemetry is disabled, skipping otel-collector service bundling...")
++            # Bundling
++            return EnvVarsDict({"CLP_OTEL_COLLECTOR_ENABLED": "0"})
++
++        if BundledService.OTEL_COLLECTOR not in self._clp_config.bundled:
++            logger.info(
++                "%s is not included in the 'bundled' configuration, skipping service bundling...",
++                component_name,
++            )
++            # Bundling
++            return EnvVarsDict({"CLP_OTEL_COLLECTOR_ENABLED": "0"})
++
++        logger.info("Setting up environment for bundling %s...", component_name)
++
++        conf_file = self._conf_dir / "otel-collector" / "config.yaml"
++
++        env_vars = EnvVarsDict()
++
++        # Paths
++        env_vars |= EnvVarsDict(
++            {
++                "CLP_OTEL_COLLECTOR_CONF_FILE_HOST": str(conf_file),
++            }
++        )
++
++        return env_vars
++
++    def _set_up_env_for_otel_collector(self) -> EnvVarsDict:
++        """
++        Sets up environment variables for the OpenTelemetry Collector component.
++
++        :return: Dictionary of environment variables necessary to launch the component.
++        """
++        component_name = OTEL_COLLECTOR_COMPONENT_NAME
++        if self._clp_config.telemetry.disable:
++            logger.info("Telemetry is disabled, skipping %s environment setup...", component_name)
++            return EnvVarsDict()
++
++        logger.info(f"Setting up environment for {component_name}...")
++
++        env_vars = EnvVarsDict()
++
++        # Connection config
++        if BundledService.OTEL_COLLECTOR not in self._clp_config.bundled:
++            env_vars |= EnvVarsDict(
++                {
++                    "CLP_OTEL_COLLECTOR_CONNECT_PORT": str(self._clp_config.otel_collector.port),
++                    "CLP_EXTRA_HOST_OTEL_COLLECTOR_NAME": OTEL_COLLECTOR_COMPONENT_NAME,
++                    "CLP_EXTRA_HOST_OTEL_COLLECTOR_ADDR": _resolve_external_host(
++                        self._clp_config.otel_collector.host
++                    ),
++                }
++            )
++        else:
++            env_vars |= EnvVarsDict(
++                {
++                    "CLP_OTEL_COLLECTOR_HOST": _get_ip_from_hostname(
++                        self._clp_config.otel_collector.host
++                    ),
++                    "CLP_OTEL_COLLECTOR_PORT": str(self._clp_config.otel_collector.port),
++                }
++            )
++
++        return env_vars
++
++    def _set_up_env_for_telemetry(self) -> EnvVarsDict:
++        """
++        Sets up environment variables for telemetry.
++
++        :return: Dictionary of environment variables necessary to configure telemetry.
++        """
++        if self._clp_config.telemetry.disable:
++            logger.info("Telemetry is disabled, skipping telemetry environment setup...")
++            # Telemetry
++            return EnvVarsDict({"CLP_DISABLE_TELEMETRY": "true"})
++
++        logger.info("Setting up environment for telemetry...")
++
++        env_vars = EnvVarsDict()
++
++        # Telemetry
++        env_vars |= EnvVarsDict(
++            {
++                "CLP_DISABLE_TELEMETRY": "false",
++                "CLP_TELEMETRY_ENDPOINT": self._clp_config.telemetry.endpoint,
++            }
++        )
++
++        # Resource attributes
++        version_file_path = self._clp_home / "VERSION"
++        clp_version = (
++            version_file_path.read_text().strip() if version_file_path.exists() else "unknown"
++        )
++        resource_attrs = {
++            "clp.deployment.id": self._instance_id,
++            "service.version": clp_version,
++            "clp.deployment.method": "docker-compose",
++            "clp.storage.engine": self._clp_config.package.storage_engine,
++        }
++        env_vars |= EnvVarsDict(
++            {
++                "OTEL_RESOURCE_ATTRIBUTES": ",".join(f"{k}={v}" for k, v in resource_attrs.items()),
++            }
++        )
++
++        return env_vars
++
+     def _read_and_update_settings_json(
+         self, settings_file_path: pathlib.Path, updates: dict[str, Any]
+     ) -> dict[str, Any]:
+@@ -964,6 +1083,7 @@ class DockerComposeController(BaseController):
+         self, clp_config: ClpConfig, instance_id: str, restart_policy: str = "on-failure:3"
+     ) -> None:
+         """Initializes the DockerComposeController."""
++        self._instance_id = instance_id
+         self._project_name = f"clp-package-{instance_id}"
+         self._restart_policy = restart_policy
+         super().__init__(clp_config)
+@@ -1014,6 +1134,9 @@ class DockerComposeController(BaseController):
+             "CLP_PACKAGE_STORAGE_ENGINE": self._clp_config.package.storage_engine,
+         }
+ 
++        # Telemetry
++        env_vars |= self._set_up_env_for_telemetry()
++
+         # Paths
+         aws_config_dir = self._clp_config.aws_config_directory
+         env_vars |= {
+@@ -1047,11 +1170,13 @@ class DockerComposeController(BaseController):
+         env_vars |= self._set_up_env_for_queue_bundling()
+         env_vars |= self._set_up_env_for_redis_bundling()
+         env_vars |= self._set_up_env_for_results_cache_bundling()
++        env_vars |= self._set_up_env_for_otel_collector_bundling()
+         env_vars |= self._set_up_env_for_database()
+         env_vars |= self._set_up_env_for_queue()
+         env_vars |= self._set_up_env_for_redis()
+         env_vars |= self._set_up_env_for_spider_scheduler()
+         env_vars |= self._set_up_env_for_results_cache()
++        env_vars |= self._set_up_env_for_otel_collector()
+         env_vars |= self._set_up_env_for_compression_scheduler()
+         env_vars |= self._set_up_env_for_query_scheduler()
+         env_vars |= self._set_up_env_for_compression_worker(num_workers)
+@@ -1092,6 +1217,8 @@ class DockerComposeController(BaseController):
+             cwd=self._clp_home,
+             check=True,
+         )
++        if not self._clp_config.telemetry.disable:
++            self._emit_topology_metrics()
+         logger.info("Started CLP.")
+ 
+     def stop(self) -> None:
+@@ -1140,6 +1267,58 @@ class DockerComposeController(BaseController):
+         """
+         return _DEPLOYMENT_TYPE_TO_COMPOSE_FILE[self._clp_config.get_deployment_type()]
+ 
++    def _emit_topology_metrics(self) -> None:
++        timestamp_ns = int(time.time() * 1e9)
++        metrics = []
++
++        def add_gauge(name: str, value: int):
++            metrics.append(
++                {
++                    "name": name,
++                    "gauge": {
++                        "dataPoints": [{"asInt": str(value), "timeUnixNano": str(timestamp_ns)}]
++                    },
++                }
++            )
++
++        num_workers = self._get_num_workers()
++
++        # NOTE: Replicas are hardcoded to 1 until multi-container workers land (see #1424).
++        add_gauge("clp.deployment.compression_worker_replicas", 1)
++        add_gauge("clp.deployment.compression_worker_concurrency", num_workers)
++        add_gauge("clp.deployment.query_worker_replicas", 1)
++        add_gauge("clp.deployment.query_worker_concurrency", num_workers)
++        add_gauge("clp.deployment.reducer_replicas", 1)
++        add_gauge("clp.deployment.reducer_concurrency", num_workers)
++
++        payload = {
++            "resourceMetrics": [
++                {
++                    "resource": {"attributes": []},
++                    "scopeMetrics": [{"scope": {"name": "clp.controller"}, "metrics": metrics}],
++                }
++            ]
++        }
++
++        payload["resourceMetrics"][0]["resource"]["attributes"].append(
++            {"key": "service.name", "value": {"stringValue": "controller"}}
++        )
++
++        try:
++            payload_bytes = json.dumps(payload).encode("utf-8")
++            otel_collector_host = self._clp_config.otel_collector.host
++            if BundledService.OTEL_COLLECTOR in self._clp_config.bundled:
++                otel_collector_host = _get_ip_from_hostname(otel_collector_host)
++            with http_request(
++                f"http://{otel_collector_host}:{self._clp_config.otel_collector.port}/v1/metrics",
++                method="POST",
++                data=payload_bytes,
++                headers={"Content-Type": "application/json"},
++            ) as response:
++                response.read()
++        except Exception as e:
++            logger.warning("Failed to emit topology metrics: %s", e)
++
+ 
+ def get_or_create_instance_id(clp_config: ClpConfig) -> str:
+     """
+diff --git a/components/clp-package-utils/clp_package_utils/general.py b/components/clp-package-utils/clp_package_utils/general.py
+index 4e305cd2..dac616e3 100644
+--- a/components/clp-package-utils/clp_package_utils/general.py
++++ b/components/clp-package-utils/clp_package_utils/general.py
+@@ -1,5 +1,6 @@
+ import enum
+ import errno
++import http.client
+ import json
+ import logging
+ import os
+@@ -8,11 +9,13 @@ import re
+ import secrets
+ import socket
+ import subprocess
++import time
++import urllib.error
++import urllib.request
+ import uuid
+ from enum import auto
+ 
+ import yaml
+-from ruamel.yaml import YAML
+ from clp_py_utils.clp_config import (
+     CLP_DEFAULT_CONFIG_FILE_RELATIVE_PATH,
+     CLP_DEFAULT_CREDENTIALS_FILE_PATH,
+@@ -44,6 +47,7 @@ from clp_py_utils.core import (
+     resolve_host_path_in_container,
+     validate_path_could_be_dir,
+ )
++from ruamel.yaml import YAML
+ from strenum import KebabCaseStrEnum
+ 
+ # CONSTANTS
+@@ -166,6 +170,48 @@ def get_clp_home():
+     return clp_home.resolve()
+ 
+ 
++def http_request(
++    url: str,
++    data: bytes | None = None,
++    headers: dict[str, str] | None = None,
++    method: str = "GET",
++    max_attempts: int = 2,
++    retry_delay: float = 1.0,
++    timeout: float = 5.0,
++) -> http.client.HTTPResponse:
++    """
++    Sends an HTTP request with retry logic.
++
++    :param url: The URL to send the request to.
++    :param data: Request body as bytes.
++    :param headers: Request headers.
++    :param method: HTTP method.
++    :param max_attempts: Number of attempts before giving up. Must be >= 1.
++    :param retry_delay: Seconds to wait between retries.
++    :param timeout: Seconds to wait for a response per attempt.
++    :return: The HTTP response.
++    :raise ValueError: If max_attempts < 1.
++    :raise urllib.error.URLError: If all attempts fail due to a network-level error.
++    :raise urllib.error.HTTPError: If all attempts fail with an HTTP error status.
++    :raise OSError: If all attempts fail due to a socket-level error.
++    """
++    if max_attempts < 1:
++        raise ValueError(f"max_attempts must be >= 1, got {max_attempts}")
++
++    req = urllib.request.Request(url, data=data, headers=headers or {}, method=method)
++    last_exception: urllib.error.URLError | urllib.error.HTTPError | OSError = (
++        urllib.error.URLError("No attempts were made")
++    )
++    for attempt in range(max_attempts):
++        try:
++            return urllib.request.urlopen(req, timeout=timeout)
++        except (urllib.error.URLError, urllib.error.HTTPError, OSError) as e:
++            last_exception = e
++            if attempt < max_attempts - 1:
++                time.sleep(retry_delay)
++    raise last_exception
++
++
+ def generate_container_name(job_type: str) -> str:
+     """
+     :param job_type:
+diff --git a/components/clp-package-utils/clp_package_utils/scripts/start_clp.py b/components/clp-package-utils/clp_package_utils/scripts/start_clp.py
+index b1e493f8..a71cfae5 100755
+--- a/components/clp-package-utils/clp_package_utils/scripts/start_clp.py
++++ b/components/clp-package-utils/clp_package_utils/scripts/start_clp.py
+@@ -7,7 +7,6 @@ import pathlib
+ import sys
+ 
+ import click
+-
+ from clp_py_utils.clp_config import CLP_DEFAULT_CONFIG_FILE_RELATIVE_PATH, ClpConfig
+ from clp_py_utils.core import resolve_host_path_in_container
+ 
+diff --git a/components/clp-py-utils/clp_py_utils/clp_config.py b/components/clp-py-utils/clp_py_utils/clp_config.py
+index 797c38db..e2124f81 100644
+--- a/components/clp-py-utils/clp_py_utils/clp_config.py
++++ b/components/clp-py-utils/clp_py_utils/clp_config.py
+@@ -36,6 +36,7 @@ REDIS_COMPONENT_NAME = "redis"
+ SPIDER_SCHEDULER_COMPONENT_NAME = "spider_scheduler"
+ REDUCER_COMPONENT_NAME = "reducer"
+ RESULTS_CACHE_COMPONENT_NAME = "results_cache"
++OTEL_COLLECTOR_COMPONENT_NAME = "otel-collector"
+ COMPRESSION_SCHEDULER_COMPONENT_NAME = "compression_scheduler"
+ QUERY_SCHEDULER_COMPONENT_NAME = "query_scheduler"
+ PRESTO_COORDINATOR_COMPONENT_NAME = "presto-coordinator"
+@@ -129,6 +130,7 @@ class BundledService(LowercaseStrEnum):
+     QUEUE = auto()
+     REDIS = auto()
+     RESULTS_CACHE = auto()
++    OTEL_COLLECTOR = auto()
+ 
+ 
+ BundledServiceStr = Annotated[BundledService, StrEnumSerializer]
+@@ -518,6 +520,18 @@ class ResultsCache(BaseModel):
+             self.port = self.DEFAULT_PORT
+ 
+ 
++class OtelCollector(BaseModel):
++    DEFAULT_PORT: ClassVar[int] = 4318
++
++    host: DomainStr = "localhost"
++    port: Port = DEFAULT_PORT
++
++    def transform_for_container(self, is_bundled: bool):
++        self.host = OTEL_COLLECTOR_COMPONENT_NAME
++        if is_bundled:
++            self.port = self.DEFAULT_PORT
++
++
+ class Queue(BaseModel):
+     DEFAULT_PORT: ClassVar[int] = 5672
+ 
+@@ -814,6 +828,7 @@ class ClpConfig(BaseModel):
+         BundledService.QUEUE,
+         BundledService.REDIS,
+         BundledService.RESULTS_CACHE,
++        BundledService.OTEL_COLLECTOR,
+     ]
+ 
+     package: Package = Package()
+@@ -823,6 +838,7 @@ class ClpConfig(BaseModel):
+     redis: Redis | None = Redis()
+     reducer: Reducer = Reducer()
+     results_cache: ResultsCache = ResultsCache()
++    otel_collector: OtelCollector = OtelCollector()
+     compression_scheduler: CompressionScheduler = CompressionScheduler()
+     spider_scheduler: SpiderScheduler | None = None
+     query_scheduler: QueryScheduler = QueryScheduler()
+@@ -1096,6 +1112,7 @@ class ClpConfig(BaseModel):
+         if self.spider_scheduler is not None:
+             self.spider_scheduler.transform_for_container()
+         self.results_cache.transform_for_container(BundledService.RESULTS_CACHE in self.bundled)
++        self.otel_collector.transform_for_container(BundledService.OTEL_COLLECTOR in self.bundled)
+         self.query_scheduler.transform_for_container()
+         self.reducer.transform_for_container()
+         if self.package.query_engine == QueryEngine.PRESTO and self.presto is not None:
+diff --git a/components/clp-py-utils/clp_py_utils/initialize-orchestration-db.py b/components/clp-py-utils/clp_py_utils/initialize-orchestration-db.py
+index 1803cadc..85dac383 100644
+--- a/components/clp-py-utils/clp_py_utils/initialize-orchestration-db.py
++++ b/components/clp-py-utils/clp_py_utils/initialize-orchestration-db.py
+@@ -11,6 +11,7 @@ from job_orchestration.scheduler.constants import (
+     QueryJobStatus,
+     QueryTaskStatus,
+ )
++from mysql.connector.errorcode import ER_DUP_KEYNAME
+ from pydantic import ValidationError
+ 
+ from clp_py_utils.clp_config import (
+@@ -22,7 +23,6 @@ from clp_py_utils.clp_config import (
+ )
+ from clp_py_utils.core import read_yaml_config_file
+ from clp_py_utils.sql_adapter import SqlAdapter
+-from mysql.connector.errorcode import ER_DUP_KEYNAME
+ 
+ # Setup logging
+ # Create logger
+diff --git a/components/package-template/src/etc/clp-config.template.json.yaml b/components/package-template/src/etc/clp-config.template.json.yaml
+index 24a6e3d4..a2325730 100644
+--- a/components/package-template/src/etc/clp-config.template.json.yaml
++++ b/components/package-template/src/etc/clp-config.template.json.yaml
+@@ -43,6 +43,7 @@ telemetry:
+ #  - "queue"
+ #  - "redis"
+ #  - "results_cache"
++#  - "otel_collector"
+ #
+ #database:
+ #  type: "mariadb"  # "mariadb" or "mysql"
+@@ -97,6 +98,10 @@ telemetry:
+ #  # Retention period for search results, in minutes. Set to null to disable automatic deletion.
+ #  retention_period: 60
+ #
++#otel_collector:
++#  host: "localhost"
++#  port: 4318
++#
+ #compression_worker:
+ #  logging_level: "INFO"
+ #
+diff --git a/components/package-template/src/etc/clp-config.template.text.yaml b/components/package-template/src/etc/clp-config.template.text.yaml
+index 9c7b4993..3975ccff 100644
+--- a/components/package-template/src/etc/clp-config.template.text.yaml
++++ b/components/package-template/src/etc/clp-config.template.text.yaml
+@@ -34,6 +34,7 @@ log_ingestor: null
+ #  - "queue"
+ #  - "redis"
+ #  - "results_cache"
++#  - "otel_collector"
+ #
+ #database:
+ #  type: "mariadb"  # "mariadb" or "mysql"
+@@ -87,6 +88,10 @@ log_ingestor: null
+ #  # Retention period for search results, in minutes. Set to null to disable automatic deletion.
+ #  retention_period: 60
+ #
++#otel_collector:
++#  host: "localhost"
++#  port: 4318
++#
+ #compression_worker:
+ #  logging_level: "INFO"
+ #
+diff --git a/components/package-template/src/etc/otel-collector/config.yaml b/components/package-template/src/etc/otel-collector/config.yaml
+new file mode 100644
+index 00000000..a2acc738
+--- /dev/null
++++ b/components/package-template/src/etc/otel-collector/config.yaml
+@@ -0,0 +1,55 @@
++extensions:
++  health_check:
++    endpoint: "0.0.0.0:13133"
++
++receivers:
++  otlp:
++    protocols:
++      http:
++        endpoint: "0.0.0.0:4318"
++
++processors:
++  batch:
++    timeout: "30s"
++    send_batch_size: 1024
++  resourcedetection:
++    # Use the Docker detector so the containerized collector reports Docker host metadata instead of
++    # only container metadata. This requires the /var/run/docker.sock mount in Docker Compose.
++    detectors: ["env", "docker", "system"]
++    docker:
++      resource_attributes:
++        host.name:
++          enabled: false
++    system:
++      resource_attributes:
++        host.arch:
++          enabled: true
++        host.cpu.family:
++          enabled: true
++        host.cpu.model.id:
++          enabled: true
++        host.cpu.vendor.id:
++          enabled: true
++        host.name:
++          enabled: false
++    override: false
++
++exporters:
++  otlp_http:
++    endpoint: "${env:CLP_TELEMETRY_ENDPOINT}"
++
++service:
++  extensions: ["health_check"]
++  pipelines:
++    metrics:
++      receivers: ["otlp"]
++      processors: ["resourcedetection", "batch"]
++      exporters: ["otlp_http"]
++    traces:
++      receivers: ["otlp"]
++      processors: ["resourcedetection", "batch"]
++      exporters: ["otlp_http"]
++    logs:
++      receivers: ["otlp"]
++      processors: ["resourcedetection", "batch"]
++      exporters: ["otlp_http"]
+diff --git a/docs/src/user-docs/reference-telemetry.md b/docs/src/user-docs/reference-telemetry.md
+index eec7ae99..a293e06f 100644
+--- a/docs/src/user-docs/reference-telemetry.md
++++ b/docs/src/user-docs/reference-telemetry.md
+@@ -22,6 +22,18 @@ Metrics are exported via the [OpenTelemetry Protocol
+ 
+ `https://telemetry.yscope.io`
+ 
++:::{note}
++With the bundled OpenTelemetry Collector, `telemetry.endpoint` is the collector's export target. To
++use your own collector, remove `otel_collector` from `bundled` and set `otel_collector.host` /
++`otel_collector.port` to its OTLP/HTTP receiver.
++
++When you use your own collector, the bundled collector's resource detection and batching are not
++applied unless your collector config includes equivalent processors; your collector also controls
++filtering, redaction, aggregation, and forwarding. For a matching baseline, start from
++`components/package-template/src/etc/otel-collector/config.yaml` (Docker Compose) or the
++`otel-collector-config.yaml` embedded in `tools/deployment/package-helm/templates/configmap.yaml`
++(Helm).
++:::
+ 
+ ## How to disable telemetry
+ 
+@@ -44,7 +56,7 @@ Edit `clp-config.yaml`:
+ ```yaml
+ telemetry:
+   disable: true
+-  endpoint: "https://telemetry.yscope.io"  # or "https://your-own-otel-collector"
++  endpoint: "https://telemetry.yscope.io"
+ ```
+ :::
+ :::{tab-item} Kubernetes
+@@ -77,4 +89,3 @@ to disable telemetry for your entire organization.
+ | not set | `false`     | —                | **yes**         | **No** — requests fail silently at the network level                   |
+ | `true`  | `true`      | —                | no              | **No** — both agree                                                    |
+ | not set | not set     | Y                | **yes**         | **No** — network blocking is independent of software settings          |
+-
+diff --git a/tools/deployment/package-helm/Chart.yaml b/tools/deployment/package-helm/Chart.yaml
+index 38a8b1f5..e6a7f664 100644
+--- a/tools/deployment/package-helm/Chart.yaml
++++ b/tools/deployment/package-helm/Chart.yaml
+@@ -1,6 +1,6 @@
+ apiVersion: "v2"
+ name: "clp"
+-version: "0.3.2-dev.7"
++version: "0.3.2-dev.8"
+ description: "A Helm chart for CLP's (Compressed Log Processor) package deployment"
+ type: "application"
+ appVersion: "0.12.1-dev"
+diff --git a/tools/deployment/package-helm/templates/_helpers.tpl b/tools/deployment/package-helm/templates/_helpers.tpl
+index d9e57444..6f35239a 100644
+--- a/tools/deployment/package-helm/templates/_helpers.tpl
++++ b/tools/deployment/package-helm/templates/_helpers.tpl
+@@ -50,6 +50,70 @@ app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+ app.kubernetes.io/managed-by: {{ .Release.Service }}
+ {{- end }}
+ 
++{{/*
++Gets or generates the instance ID.
++It ensures the exact same UUID is used across all templates during a single helm install/upgrade.
++*/}}
++{{- define "clp.instanceId" -}}
++{{- if not .Values.global }}
++  {{- $_ := set .Values "global" dict -}}
++{{- end }}
++{{- if not .Values.global.instanceId }}
++  {{- $existingName := printf "%s-instance-id" (include "clp.fullname" .) }}
++  {{- $existing := lookup "v1" "ConfigMap" .Release.Namespace $existingName }}
++  {{- if $existing }}
++    {{- $_ := set .Values.global "instanceId" (index $existing.data "instanceId") -}}
++  {{- else }}
++    {{- $_ := set .Values.global "instanceId" uuidv4 -}}
++  {{- end }}
++{{- end }}
++{{- .Values.global.instanceId -}}
++{{- end -}}
++
++{{/*
++Creates common CLP resource attributes for telemetry.
++
++@return {string} Comma-separated OpenTelemetry resource attributes
++*/}}
++{{- define "clp.resourceAttributes" -}}
++{{- printf
++  "clp.deployment.id=%s,service.version=%s,clp.deployment.method=helm,clp.storage.engine=%s"
++  (include "clp.instanceId" .)
++  .Chart.AppVersion
++  .Values.clpConfig.package.storage_engine -}}
++{{- end -}}
++
++{{/*
++Generates the OTLP JSON payload for topology metrics emission.
++
++This produces the same payload structure as DockerComposeController._emit_topology_metrics()
++in controller.py, ensuring feature parity between Docker Compose and Helm deployments.
++
++@return {string} OTLP JSON payload for topology metrics
++*/}}
++{{- define "clp.topologyMetricsPayload" -}}
++{{- $timestampNs := now.UnixNano -}}
++{{- $compressionWorkerScheduling := .Values.scheduling.compressionWorker -}}
++{{- $compressionWorkerReplicas := $compressionWorkerScheduling.replicas | default 1 | int -}}
++{{- $queryWorkerReplicas := .Values.scheduling.queryWorker.replicas | default 1 | int -}}
++{{- $reducerReplicas := .Values.scheduling.reducer.replicas | default 1 | int -}}
++{{- $workerConcurrency := .Values.workerConcurrency | default 8 | int -}}
++{{- printf `{"resourceMetrics":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"controller"}}]},"scopeMetrics":[{"scope":{"name":"clp.controller"},"metrics":[{"name":"clp.deployment.compression_worker_replicas","gauge":{"dataPoints":[{"asInt":"%d","timeUnixNano":"%d"}]}},{"name":"clp.deployment.compression_worker_concurrency","gauge":{"dataPoints":[{"asInt":"%d","timeUnixNano":"%d"}]}},{"name":"clp.deployment.query_worker_replicas","gauge":{"dataPoints":[{"asInt":"%d","timeUnixNano":"%d"}]}},{"name":"clp.deployment.query_worker_concurrency","gauge":{"dataPoints":[{"asInt":"%d","timeUnixNano":"%d"}]}},{"name":"clp.deployment.reducer_replicas","gauge":{"dataPoints":[{"asInt":"%d","timeUnixNano":"%d"}]}},{"name":"clp.deployment.reducer_concurrency","gauge":{"dataPoints":[{"asInt":"%d","timeUnixNano":"%d"}]}}]}]}]}` $compressionWorkerReplicas $timestampNs $workerConcurrency $timestampNs $queryWorkerReplicas $timestampNs $workerConcurrency $timestampNs $reducerReplicas $timestampNs $workerConcurrency $timestampNs -}}
++{{- end -}}
++
++{{/*
++Provides environment variables for telemetry (except service.name).
++*/}}
++{{- define "clp.telemetryEnv" -}}
++{{- if .Values.clpConfig.telemetry.disable }}
++- name: "CLP_DISABLE_TELEMETRY"
++  value: "true"
++{{- else }}
++- name: "OTEL_EXPORTER_OTLP_ENDPOINT"
++  value: {{ include "clp.otelCollectorUrl" . | quote }}
++{{- end }}
++{{- end -}}
++
+ {{/*
+ Creates selector labels for matching resources.
+ 
+@@ -272,6 +336,47 @@ Gets the port for the results cache service.
+ {{- end -}}
+ {{- end }}
+ 
++{{/*
++Gets the host for the OpenTelemetry Collector service.
++
++@param {object} . Root template context
++@return {string} The OpenTelemetry Collector host
++*/}}
++{{- define "clp.otelCollectorHost" -}}
++{{- if has "otel_collector" .Values.clpConfig.bundled -}}
++{{- printf "%s-otel-collector" (include "clp.fullname" .) -}}
++{{- else -}}
++{{- .Values.clpConfig.otel_collector.host -}}
++{{- end -}}
++{{- end }}
++
++{{/*
++Gets the port for the OpenTelemetry Collector service.
++
++@param {object} . Root template context
++@return {string} The OpenTelemetry Collector port
++*/}}
++{{- define "clp.otelCollectorPort" -}}
++{{- if has "otel_collector" .Values.clpConfig.bundled -}}
++4318
++{{- else -}}
++{{- .Values.clpConfig.otel_collector.port -}}
++{{- end -}}
++{{- end }}
++
++{{/*
++Gets the URL for the OpenTelemetry Collector service.
++
++@param {object} . Root template context
++@return {string} The OpenTelemetry Collector URL
++*/}}
++{{- define "clp.otelCollectorUrl" -}}
++{{- printf
++  "http://%s:%s"
++  (include "clp.otelCollectorHost" .)
++  (include "clp.otelCollectorPort" .) -}}
++{{- end }}
++
+ {{/*
+ Gets the host for the Presto service.
+ 
+diff --git a/tools/deployment/package-helm/templates/api-server-deployment.yaml b/tools/deployment/package-helm/templates/api-server-deployment.yaml
+index 6db52726..2da5ae99 100644
+--- a/tools/deployment/package-helm/templates/api-server-deployment.yaml
++++ b/tools/deployment/package-helm/templates/api-server-deployment.yaml
+@@ -36,6 +36,7 @@ spec:
+           image: "{{ include "clp.image.ref" . }}"
+           imagePullPolicy: "{{ .Values.image.clpPackage.pullPolicy }}"
+           env:
++            {{- include "clp.telemetryEnv" . | nindent 12 }}
+             - name: "CLP_DB_PASS"
+               valueFrom:
+                 secretKeyRef:
+@@ -46,6 +47,8 @@ spec:
+                 secretKeyRef:
+                   name: {{ include "clp.fullname" . }}-database
+                   key: "username"
++            - name: "OTEL_SERVICE_NAME"
++              value: "api-server"
+             - name: "RUST_LOG"
+               value: "INFO"
+           ports:
+diff --git a/tools/deployment/package-helm/templates/configmap.yaml b/tools/deployment/package-helm/templates/configmap.yaml
+index ff147f7d..f4bcf32a 100644
+--- a/tools/deployment/package-helm/templates/configmap.yaml
++++ b/tools/deployment/package-helm/templates/configmap.yaml
+@@ -164,6 +164,9 @@ data:
+       retention_period: null
+       {{- end }}
+       stream_collection_name: {{ .Values.clpConfig.results_cache.stream_collection_name | quote }}
++    otel_collector:
++      host: "{{ include "clp.otelCollectorHost" . }}"
++      port: {{ include "clp.otelCollectorPort" . | int }}
+     {{- with .Values.clpConfig.stream_output }}
+     stream_output:
+       {{- with .storage }}
+@@ -435,3 +438,60 @@ data:
+     echo "node.id=$(hostname)" >> "${PRESTO_CONFIG_DIR}/node.properties"
+ {{- end }}{{/* with .Values.clpConfig.presto */}}
+ {{- end }}{{/* if has "presto" .Values.clpConfig.bundled */}}
++
++{{- if and
++  (not .Values.clpConfig.telemetry.disable)
++  (has "otel_collector" .Values.clpConfig.bundled) }}
++  otel-collector-config.yaml: |
++    extensions:
++      health_check:
++        endpoint: "0.0.0.0:13133"
++
++    receivers:
++      otlp:
++        protocols:
++          http:
++            endpoint: "0.0.0.0:4318"
++
++    processors:
++      batch:
++        timeout: "30s"
++        send_batch_size: 1024
++      resourcedetection:
++        # NOTE: Kubernetes deployments do not mount the Docker socket, so use env and system
++        # detection only.
++        detectors: ["env", "system"]
++        system:
++          resource_attributes:
++            host.name:
++              enabled: false
++            host.arch:
++              enabled: true
++            host.cpu.family:
++              enabled: true
++            host.cpu.model.id:
++              enabled: true
++            host.cpu.vendor.id:
++              enabled: true
++        override: false
++
++    exporters:
++      otlp_http:
++        endpoint: {{ .Values.clpConfig.telemetry.endpoint | quote }}
++
++    service:
++      extensions: ["health_check"]
++      pipelines:
++        metrics:
++          receivers: ["otlp"]
++          processors: ["resourcedetection", "batch"]
++          exporters: ["otlp_http"]
++        traces:
++          receivers: ["otlp"]
++          processors: ["resourcedetection", "batch"]
++          exporters: ["otlp_http"]
++        logs:
++          receivers: ["otlp"]
++          processors: ["resourcedetection", "batch"]
++          exporters: ["otlp_http"]
++{{- end }}
+diff --git a/tools/deployment/package-helm/templates/instance-id-configmap.yaml b/tools/deployment/package-helm/templates/instance-id-configmap.yaml
+new file mode 100644
+index 00000000..be90bb38
+--- /dev/null
++++ b/tools/deployment/package-helm/templates/instance-id-configmap.yaml
+@@ -0,0 +1,13 @@
++{{/*
++Stores a unique instance ID for this Helm deployment. On first install, a UUID is
++generated. On subsequent upgrades, the existing value is read via lookup so the ID
++remains stable across the lifetime of this release.
++*/}}
++apiVersion: "v1"
++kind: "ConfigMap"
++metadata:
++  name: {{ include "clp.fullname" . }}-instance-id
++  labels:
++    {{- include "clp.labels" . | nindent 4 }}
++data:
++  instanceId: {{ include "clp.instanceId" . | quote }}
+diff --git a/tools/deployment/package-helm/templates/log-ingestor-deployment.yaml b/tools/deployment/package-helm/templates/log-ingestor-deployment.yaml
+index 34585cbc..3faa5f52 100644
+--- a/tools/deployment/package-helm/templates/log-ingestor-deployment.yaml
++++ b/tools/deployment/package-helm/templates/log-ingestor-deployment.yaml
+@@ -37,6 +37,7 @@ spec:
+           image: "{{ include "clp.image.ref" . }}"
+           imagePullPolicy: "{{ .Values.image.clpPackage.pullPolicy }}"
+           env:
++            {{- include "clp.telemetryEnv" . | nindent 12 }}
+             - name: "CLP_DB_PASS"
+               valueFrom:
+                 secretKeyRef:
+@@ -47,6 +48,8 @@ spec:
+                 secretKeyRef:
+                   name: {{ include "clp.fullname" . }}-database
+                   key: "username"
++            - name: "OTEL_SERVICE_NAME"
++              value: "log-ingestor"
+             - name: "RUST_LOG"
+               value: {{ .Values.clpConfig.log_ingestor.logging_level | quote }}
+           ports:
+diff --git a/tools/deployment/package-helm/templates/otel-collector-deployment.yaml b/tools/deployment/package-helm/templates/otel-collector-deployment.yaml
+new file mode 100644
+index 00000000..2514585b
+--- /dev/null
++++ b/tools/deployment/package-helm/templates/otel-collector-deployment.yaml
+@@ -0,0 +1,63 @@
++{{- if and
++  (not .Values.clpConfig.telemetry.disable)
++  (has "otel_collector" .Values.clpConfig.bundled) }}
++{{- $otelCollectorImage := printf
++  "%s:%s"
++  .Values.image.otelCollector.repository
++  .Values.image.otelCollector.tag }}
++apiVersion: "apps/v1"
++kind: "Deployment"
++metadata:
++  name: {{ include "clp.fullname" . }}-otel-collector
++  labels:
++    {{- include "clp.labels" . | nindent 4 }}
++    app.kubernetes.io/component: "otel-collector"
++spec:
++  replicas: 1
++  selector:
++    matchLabels:
++      {{- include "clp.selectorLabels" . | nindent 6 }}
++      app.kubernetes.io/component: "otel-collector"
++  template:
++    metadata:
++      labels:
++        {{- include "clp.labels" . | nindent 8 }}
++        app.kubernetes.io/component: "otel-collector"
++    spec:
++      {{- include "clp.createSchedulingConfigs" (dict
++          "root" .
++          "component" "otelCollector"
++        ) | nindent 6 }}
++      containers:
++        - name: "otel-collector"
++          image: {{ $otelCollectorImage | quote }}
++          imagePullPolicy: {{ .Values.image.otelCollector.pullPolicy | quote }}
++          ports:
++            - name: "otel-collector"
++              containerPort: 4318
++            - name: "otel-health"
++              containerPort: 13133
++          volumeMounts:
++            - name: "otel-collector-config"
++              mountPath: "/etc/otelcol-contrib"
++          env:
++            - name: "OTEL_RESOURCE_ATTRIBUTES"
++              value: {{ include "clp.resourceAttributes" . | quote }}
++          args:
++            - "--config=/etc/otelcol-contrib/config.yaml"
++          readinessProbe:
++            {{- include "clp.readinessProbeTimings" . | nindent 12 }}
++            httpGet: &otel-health-check
++              path: "/"
++              port: "otel-health"
++          livenessProbe:
++            {{- include "clp.livenessProbeTimings" . | nindent 12 }}
++            httpGet: *otel-health-check
++      volumes:
++        - name: "otel-collector-config"
++          configMap:
++            name: {{ include "clp.fullname" . }}-config
++            items:
++              - key: "otel-collector-config.yaml"
++                path: "config.yaml"
++{{- end }}
+diff --git a/tools/deployment/package-helm/templates/otel-collector-service.yaml b/tools/deployment/package-helm/templates/otel-collector-service.yaml
+new file mode 100644
+index 00000000..5f247fcd
+--- /dev/null
++++ b/tools/deployment/package-helm/templates/otel-collector-service.yaml
+@@ -0,0 +1,20 @@
++{{- if and
++  (not .Values.clpConfig.telemetry.disable)
++  (has "otel_collector" .Values.clpConfig.bundled) }}
++apiVersion: "v1"
++kind: "Service"
++metadata:
++  name: {{ include "clp.fullname" . }}-otel-collector
++  labels:
++    {{- include "clp.labels" . | nindent 4 }}
++    app.kubernetes.io/component: "otel-collector"
++spec:
++  ports:
++    - name: "otel-collector"
++      port: 4318
++      targetPort: "otel-collector"
++  selector:
++    {{- include "clp.selectorLabels" . | nindent 4 }}
++    app.kubernetes.io/component: "otel-collector"
++  type: ClusterIP
++{{- end }}
+diff --git a/tools/deployment/package-helm/templates/topology-metrics-emitter-job.yaml b/tools/deployment/package-helm/templates/topology-metrics-emitter-job.yaml
+new file mode 100644
+index 00000000..c91e83a5
+--- /dev/null
++++ b/tools/deployment/package-helm/templates/topology-metrics-emitter-job.yaml
+@@ -0,0 +1,51 @@
++{{- if not .Values.clpConfig.telemetry.disable }}
++apiVersion: "batch/v1"
++kind: "Job"
++metadata:
++  name: {{ include "clp.fullname" . }}-topology-metrics-emitter
++  labels:
++    {{- include "clp.labels" . | nindent 4 }}
++    app.kubernetes.io/component: "topology-metrics-emitter"
++  annotations:
++    "helm.sh/hook": "post-install,post-upgrade"
++spec:
++  template:
++    metadata:
++      labels:
++        {{- include "clp.labels" . | nindent 8 }}
++        app.kubernetes.io/component: "topology-metrics-emitter"
++    spec:
++      serviceAccountName: {{ include "clp.fullname" . }}-service-account
++      restartPolicy: "OnFailure"
++      {{- if has "otel_collector" .Values.clpConfig.bundled }}
++      initContainers:
++        - {{- include "clp.waitFor" (dict
++            "root" .
++            "type" "service"
++            "name" "otel-collector"
++          ) | nindent 10 }}
++      {{- end }}
++      containers:
++        - name: "topology-metrics-emitter"
++          image: "{{ .Values.image.curl.repository }}:{{ .Values.image.curl.tag }}"
++          imagePullPolicy: {{ .Values.image.curl.pullPolicy | quote }}
++          command:
++            - "curl"
++            - "--request"
++            - "POST"
++            - "--fail"
++            - "--header"
++            - "Content-Type: application/json"
++            - "--max-time"
++            - "5"
++            - "--retry"
++            - "1"
++            - "--retry-all-errors"
++            - "--retry-delay"
++            - "1"
++            - "--show-error"
++            - "--silent"
++            - "--data"
++            - {{ include "clp.topologyMetricsPayload" . | quote }}
++            - {{ printf "%s/v1/metrics" (include "clp.otelCollectorUrl" .) | quote }}
++{{- end }}
+diff --git a/tools/deployment/package-helm/values.yaml b/tools/deployment/package-helm/values.yaml
+index 0b78efc4..534c5a5a 100644
+--- a/tools/deployment/package-helm/values.yaml
++++ b/tools/deployment/package-helm/values.yaml
+@@ -9,6 +9,19 @@ image:
+     repository: "ghcr.io/y-scope/clp/clp-package"
+     pullPolicy: "Always"
+     tag: "main"
++  curl:
++    repository: "curlimages/curl"
++    pullPolicy: "IfNotPresent"
++    tag: "8.14.1"
++  kubectl:
++    repository: "bitnami/kubectl"
++    pullPolicy: "IfNotPresent"
++    digest: "sha256:98736aabcecb8d3cbcdcd7b132d14b1d67ed99bac2f06d471f06235933103df3"  # v1.36.0
++  otelCollector:
++    repository: >-
++      ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib
++    pullPolicy: "IfNotPresent"
++    tag: "0.152.0"
+   prestoCoordinator:
+     repository: "ghcr.io/y-scope/presto/coordinator"
+     pullPolicy: "IfNotPresent"
+@@ -17,10 +30,6 @@ image:
+     repository: "ghcr.io/y-scope/presto/prestissimo-worker"
+     pullPolicy: "IfNotPresent"
+     tag: "clp-v0.10.0-fix.1"
+-  kubectl:
+-    repository: "bitnami/kubectl"
+-    pullPolicy: "IfNotPresent"
+-    digest: "sha256:98736aabcecb8d3cbcdcd7b132d14b1d67ed99bac2f06d471f06235933103df3"  # v1.36.0
+ 
+ # - If false: Single-node deployment.
+ #   - Pods automatically tolerate control-plane taints.
+@@ -79,6 +88,7 @@ scheduling:
+   apiServer: {}
+   webui: {}
+   mcpServer: {}
++  otelCollector: {}
+ 
+ clpConfig:
+   # List of third-party services bundled (deployed) as part of the chart.
+@@ -89,6 +99,7 @@ clpConfig:
+     - "queue"
+     - "redis"
+     - "results_cache"
++    - "otel_collector"
+     - "presto"
+ 
+   package:
+@@ -161,6 +172,13 @@ clpConfig:
+     # Retention period for search results, in minutes. Set to null to disable automatic deletion.
+     retention_period: 60
+ 
++  otel_collector:
++    # Host and port for the OpenTelemetry Collector service. When "otel_collector" is in `bundled`,
++    # the host is automatically set to the bundled service name (ignored). When external, set these
++    # to the external service's address.
++    host: "localhost"
++    port: 4318
++
+   compression_worker:
+     logging_level: "INFO"
+ 
+@@ -251,6 +269,11 @@ clpConfig:
+   #     --set-file clpConfig.aws_config.config=$HOME/.aws/config
+   aws_config: null
+ 
++  # Telemetry config
++  telemetry:
++    disable: false
++    endpoint: "https://telemetry.yscope.io"
++
+ credentials:
+   database:
+     username: "clp-user"
+diff --git a/tools/deployment/package/docker-compose-all.yaml b/tools/deployment/package/docker-compose-all.yaml
+index f11aeb6e..aa8f9baf 100644
+--- a/tools/deployment/package/docker-compose-all.yaml
++++ b/tools/deployment/package/docker-compose-all.yaml
+@@ -14,6 +14,8 @@ x-service-defaults: &service_defaults
+     - "${CLP_EXTRA_HOST_REDIS_NAME:-noop-redis}=${CLP_EXTRA_HOST_REDIS_ADDR:-127.0.0.2}"
+     - "${CLP_EXTRA_HOST_RESULTS_CACHE_NAME:-noop-rc}=\
+       ${CLP_EXTRA_HOST_RESULTS_CACHE_ADDR:-127.0.0.2}"
++    - "${CLP_EXTRA_HOST_OTEL_COLLECTOR_NAME:-noop-otel}=\
++      ${CLP_EXTRA_HOST_OTEL_COLLECTOR_ADDR:-127.0.0.2}"
+ 
+ # Common healthcheck defaults.
+ x-healthcheck-defaults: &healthcheck_defaults
+@@ -35,6 +37,12 @@ x-healthcheck-defaults: &healthcheck_defaults
+   # Short timeout since no remote communication is expected.
+   timeout: "2s"
+ 
++# Common telemetry environment defaults for CLP services.
++x-clp-telemetry-env-defaults: &clp_telemetry_env_defaults
++  CLP_DISABLE_TELEMETRY: "${CLP_DISABLE_TELEMETRY:-false}"
++  OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:\
++    ${CLP_OTEL_COLLECTOR_CONNECT_PORT:-4318}}"
++
+ # Common volume definitions.
+ x-volume-definitions:
+   clp-config-readonly: &volume_clp_config_readonly
+@@ -588,9 +596,11 @@ services:
+       # Value must be either 0 or 1. Set to 0 to disable the API server.
+       replicas: "${CLP_API_SERVER_ENABLED:-1}"
+     environment:
++      <<: *clp_telemetry_env_defaults
+       CLP_LOGS_DIR: "/var/log/api_server"
+       CLP_DB_PASS: "${CLP_DB_PASS:?Please set a value.}"
+       CLP_DB_USER: "${CLP_DB_USER:-clp-user}"
++      OTEL_SERVICE_NAME: "api-server"
+       RUST_LOG: "INFO"
+     ports:
+       - host_ip: "${CLP_API_SERVER_HOST:-127.0.0.1}"
+@@ -627,9 +637,11 @@ services:
+       # Value must be either 0 or 1. Set to 0 to disable log-ingestor.
+       replicas: "${CLP_LOG_INGESTOR_ENABLED:-1}"
+     environment:
++      <<: *clp_telemetry_env_defaults
+       CLP_LOGS_DIR: "/var/log/log_ingestor"
+       CLP_DB_PASS: "${CLP_DB_PASS:?Please set a value.}"
+       CLP_DB_USER: "${CLP_DB_USER:-clp-user}"
++      OTEL_SERVICE_NAME: "log-ingestor"
+       RUST_LOG: "${CLP_LOG_INGESTOR_LOGGING_LEVEL:-INFO}"
+     ports:
+       - host_ip: "${CLP_LOG_INGESTOR_HOST:-127.0.0.1}"
+@@ -655,3 +667,29 @@ services:
+         "-f",
+         "http://log_ingestor:3002/health"
+       ]
++
++  otel-collector:
++    # NOTE: health check cannot be done easily without a custom image with HTTP utils like curl.
++    <<: *service_defaults
++    image: "ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.152.0" # yamllint disable-line
++    deploy:
++      # Value must be either 0 or 1. Set to 0 to disable the otel collector.
++      replicas: "${CLP_OTEL_COLLECTOR_ENABLED:-1}"
++    user: "${CLP_THIRD_PARTY_SERVICE_UID_GID:-1000:1000}"
++    group_add:
++      - "${CLP_DOCKER_GID:-999}"
++    environment:
++      CLP_TELEMETRY_ENDPOINT: "${CLP_TELEMETRY_ENDPOINT:-https://telemetry.yscope.io}"
++      OTEL_RESOURCE_ATTRIBUTES: "${OTEL_RESOURCE_ATTRIBUTES:-}"
++    ports:
++      - host_ip: "${CLP_OTEL_COLLECTOR_HOST:-127.0.0.1}"
++        published: "${CLP_OTEL_COLLECTOR_PORT:-4318}"
++        target: 4318
++    volumes:
++      - type: "bind"
++        source: "${CLP_OTEL_COLLECTOR_CONF_FILE_HOST:-./etc/otel-collector/config.yaml}"
++        target: "/etc/otelcol-contrib/config.yaml"
++        read_only: true
++      - type: "bind"
++        source: "/var/run/docker.sock"
++        target: "/var/run/docker.sock"
+diff --git a/tools/deployment/package/docker-compose-base.yaml b/tools/deployment/package/docker-compose-base.yaml
+index 6a88a378..794ad429 100644
+--- a/tools/deployment/package/docker-compose-base.yaml
++++ b/tools/deployment/package/docker-compose-base.yaml
+@@ -63,3 +63,8 @@ services:
+     extends:
+       file: "docker-compose-all.yaml"
+       service: "log-ingestor"
++
++  otel-collector:
++    extends:
++      file: "docker-compose-all.yaml"
++      service: "otel-collector"
+diff --git a/tools/deployment/package/docker-compose-spider-base.yaml b/tools/deployment/package/docker-compose-spider-base.yaml
+index c19382f0..2b2d993f 100644
+--- a/tools/deployment/package/docker-compose-spider-base.yaml
++++ b/tools/deployment/package/docker-compose-spider-base.yaml
+@@ -50,3 +50,8 @@ services:
+     extends:
+       file: "docker-compose-all.yaml"
+       service: "log-ingestor"
++
++  otel-collector:
++    extends:
++      file: "docker-compose-all.yaml"
++      service: "otel-collector"
+diff --git a/tools/deployment/package/docker-compose-spider.yaml b/tools/deployment/package/docker-compose-spider.yaml
+index 20b8133b..4b7c2036 100644
+--- a/tools/deployment/package/docker-compose-spider.yaml
++++ b/tools/deployment/package/docker-compose-spider.yaml
+@@ -85,3 +85,8 @@ services:
+     extends:
+       file: "docker-compose-all.yaml"
+       service: "log-ingestor"
++
++  otel-collector:
++    extends:
++      file: "docker-compose-all.yaml"
++      service: "otel-collector"
+diff --git a/tools/deployment/package/docker-compose.yaml b/tools/deployment/package/docker-compose.yaml
+index 8cba3a47..ce01e969 100644
+--- a/tools/deployment/package/docker-compose.yaml
++++ b/tools/deployment/package/docker-compose.yaml
+@@ -83,3 +83,8 @@ services:
+     extends:
+       file: "docker-compose-all.yaml"
+       service: "log-ingestor"
++
++  otel-collector:
++    extends:
++      file: "docker-compose-all.yaml"
++      service: "otel-collector"

@@ -1,0 +1,294 @@
+commit f3d8af19de9d5df0a72e0a27930399faa19a156a
+Author: Nathan <30803215+Nathan903@users.noreply.github.com>
+Date:   Thu Jun 4 12:28:14 2026 -0400
+
+    rust instrumentation
+
+diff --git a/components/api-server/Cargo.toml b/components/api-server/Cargo.toml
+index 7ebe4b7c..62d8043c 100644
+--- a/components/api-server/Cargo.toml
++++ b/components/api-server/Cargo.toml
+@@ -27,6 +27,8 @@ futures = "0.3.31"
+ mongodb = "3.5.0"
+ num_enum = "0.7.5"
+ non-empty-string = { version = "0.2.6", features = ["serde"] }
++opentelemetry = "0.32.0"
++opentelemetry-otlp = { version = "0.32.0", default-features = false, features = ["metrics", "http-proto"] }
+ pin-project-lite = "0.2.16"
+ rmp-serde = "1.3.1"
+ secrecy = "0.10.3"
+diff --git a/components/api-server/src/bin/api_server.rs b/components/api-server/src/bin/api_server.rs
+index 05a9126e..8976dcff 100644
+--- a/components/api-server/src/bin/api_server.rs
++++ b/components/api-server/src/bin/api_server.rs
+@@ -53,6 +53,11 @@ async fn main() -> anyhow::Result<()> {
+     let (config, credentials) = read_config_and_credentials(&args)?;
+     let _guard = clp_rust_utils::logging::set_up_logging("api_server.log");
+ 
++    let _tel_guard = clp_rust_utils::telemetry::init_telemetry(&config.telemetry)?;
++
++    let meter = opentelemetry::global::meter("api-server");
++    let startup_counter = meter.u64_counter("clp.service.event").build();
++
+     let api_server_config = config
+         .api_server
+         .as_ref()
+@@ -71,6 +76,7 @@ async fn main() -> anyhow::Result<()> {
+         .context("Cannot connect to CLP")?;
+ 
+     let router = api_server::routes::from_client(client)?;
++    startup_counter.add(1, &[opentelemetry::KeyValue::new("type", "start")]);
+ 
+     tracing::info!("Server started at {addr}");
+     axum::serve(listener, router)
+diff --git a/components/api-server/src/error.rs b/components/api-server/src/error.rs
+index 2f9fc93c..484b462b 100644
+--- a/components/api-server/src/error.rs
++++ b/components/api-server/src/error.rs
+@@ -39,6 +39,9 @@ pub enum ClientError {
+ 
+     #[error("Invalid search job config: {0}")]
+     InvalidSearchJobConfig(String),
++
++    #[error(transparent)]
++    Telemetry(#[from] opentelemetry_otlp::ExporterBuildError),
+ }
+ 
+ /// Empty trait to mark errors that indicate malformed data.
+@@ -82,6 +85,7 @@ impl From<clp_rust_utils::Error> for ClientError {
+             }
+             clp_rust_utils::Error::Io(error) => error.into(),
+             clp_rust_utils::Error::Sqlx(error) => error.into(),
++            clp_rust_utils::Error::TelemetryExporterBuildError(error) => Self::Telemetry(error),
+         }
+     }
+ }
+diff --git a/components/clp-rust-utils/Cargo.toml b/components/clp-rust-utils/Cargo.toml
+index a4a9a263..d54bf5d1 100644
+--- a/components/clp-rust-utils/Cargo.toml
++++ b/components/clp-rust-utils/Cargo.toml
+@@ -8,8 +8,11 @@ aws-config = "1.8.12"
+ aws-sdk-s3 = "1.121.0"
+ aws-sdk-sqs = "1.92.0"
+ brotli = "8.0.2"
+-num_enum = "0.7.5"
+ non-empty-string = { version = "0.2.6", features = ["serde"] }
++num_enum = "0.7.5"
++opentelemetry = { version = "0.32.0" }
++opentelemetry-otlp = { version = "0.32.0", default-features = false, features = ["metrics", "http-proto", "reqwest-blocking-client"] }
++opentelemetry_sdk = { version = "0.32.1", features = ["metrics", "rt-tokio"] }
+ regex = "1.12.3"
+ rmp-serde = "1.3.1"
+ secrecy = { version = "0.10.3", features = ["serde"] }
+@@ -18,6 +21,7 @@ serde_yaml = "0.9.34"
+ sqlx = { version = "0.8.6", features = ["runtime-tokio", "mysql"] }
+ strum = { version = "0.28.0", features = ["derive"] }
+ thiserror = "2.0.18"
++tracing = "0.1"
+ tracing-appender = "0.2.4"
+ tracing-subscriber = { version = "0.3.22", features = ["json", "env-filter", "fmt", "std"] }
+ utoipa = { version = "5.4.0" }
+diff --git a/components/clp-rust-utils/src/error.rs b/components/clp-rust-utils/src/error.rs
+index d85d97b6..dfb2c6f8 100644
+--- a/components/clp-rust-utils/src/error.rs
++++ b/components/clp-rust-utils/src/error.rs
+@@ -13,4 +13,7 @@ pub enum Error {
+ 
+     #[error("`sqlx::Error`: {0}")]
+     Sqlx(#[from] sqlx::Error),
++
++    #[error(transparent)]
++    TelemetryExporterBuildError(#[from] opentelemetry_otlp::ExporterBuildError),
+ }
+diff --git a/components/clp-rust-utils/src/lib.rs b/components/clp-rust-utils/src/lib.rs
+index d6683791..b3e0d6af 100644
+--- a/components/clp-rust-utils/src/lib.rs
++++ b/components/clp-rust-utils/src/lib.rs
+@@ -8,6 +8,7 @@ pub mod logging;
+ pub mod s3;
+ pub mod serde;
+ pub mod sqs;
++pub mod telemetry;
+ pub mod types;
+ 
+ pub use error::Error;
+diff --git a/components/clp-rust-utils/src/telemetry.rs b/components/clp-rust-utils/src/telemetry.rs
+new file mode 100644
+index 00000000..21722f2c
+--- /dev/null
++++ b/components/clp-rust-utils/src/telemetry.rs
+@@ -0,0 +1,81 @@
++//! OpenTelemetry metrics initialization and lifecycle management.
++
++use std::env;
++
++use opentelemetry::global;
++use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
++
++use crate::{Error, clp_config::package::config::Telemetry};
++
++/// RAII guard that ensures [`shutdown_telemetry`] is called when the guard is dropped, even if the
++/// process unwinds or returns early.
++///
++/// Use [`init_telemetry`] to create an instance.
++pub struct TelemetryGuard {
++    provider: Option<SdkMeterProvider>,
++}
++
++impl Drop for TelemetryGuard {
++    fn drop(&mut self) {
++        shutdown_telemetry(self.provider.take());
++    }
++}
++
++impl From<Option<SdkMeterProvider>> for TelemetryGuard {
++    fn from(provider: Option<SdkMeterProvider>) -> Self {
++        Self { provider }
++    }
++}
++
++/// Initializes OpenTelemetry metrics collection with the provided configuration.
++///
++/// # Returns
++///
++/// An optional [`TelemetryGuard`] on success (`None` if telemetry is disabled). The guard will shut
++/// down the meter provider and flush pending metric exports when dropped. Callers should bind it to
++/// a variable (e.g., `let _guard = ...`) to keep it alive for the desired scope.
++///
++/// # Errors
++///
++/// Returns an error if:
++///
++/// * Forwards [`opentelemetry_otlp::MetricExporterBuilder::build`]'s return values on failure.
++pub fn init_telemetry(telemetry_config: &Telemetry) -> Result<Option<TelemetryGuard>, Error> {
++    if telemetry_config.disable
++        || env::var("CLP_DISABLE_TELEMETRY")
++            .is_ok_and(|v| TELEMETRY_DISABLE_VALUES.contains(&v.trim().to_lowercase().as_str()))
++        || env::var("DO_NOT_TRACK")
++            .is_ok_and(|v| TELEMETRY_DISABLE_VALUES.contains(&v.trim().to_lowercase().as_str()))
++    {
++        return Ok(None);
++    }
++
++    let exporter = opentelemetry_otlp::MetricExporter::builder()
++        .with_http()
++        .build()?;
++
++    let reader = PeriodicReader::builder(exporter).build();
++
++    let provider = SdkMeterProvider::builder().with_reader(reader).build();
++
++    global::set_meter_provider(provider.clone());
++    Ok(Some(TelemetryGuard::from(Some(provider))))
++}
++
++/// Shuts down the given meter provider, flushing any pending metric exports.
++///
++/// If the shutdown fails, the error is logged and not propagated, since this is typically called
++/// during teardown (e.g., in a [`Drop`] implementation) where returning an error is not useful.
++pub fn shutdown_telemetry(provider: Option<SdkMeterProvider>) {
++    if let Some(p) = provider
++        && let Err(err) = p.shutdown()
++    {
++        tracing::error!(err = ? err, "Error shutting down telemetry.");
++    }
++}
++
++/// Values accepted by `CLP_DISABLE_TELEMETRY` and `DO_NOT_TRACK` to disable telemetry.
++///
++/// NOTE: This must be kept consistent with the Python implementation in
++/// `clp_package_utils/scripts/start_clp.py`.
++const TELEMETRY_DISABLE_VALUES: [&str; 4] = ["1", "true", "yes", "y"];
+diff --git a/components/log-ingestor/Cargo.toml b/components/log-ingestor/Cargo.toml
+index 9636a527..bd597735 100644
+--- a/components/log-ingestor/Cargo.toml
++++ b/components/log-ingestor/Cargo.toml
+@@ -30,6 +30,7 @@ clap = { version = "4.5.56", features = ["derive"] }
+ clp-rust-utils = { path = "../clp-rust-utils" }
+ const_format = "0.2.35"
+ non-empty-string = { version = "0.2.6", features = ["serde"] }
++opentelemetry = "0.32.0"
+ secrecy = "0.10.3"
+ serde = { version = "1.0.228", features = ["derive"] }
+ serde_json = "1.0.149"
+diff --git a/components/log-ingestor/src/bin/log_ingestor.rs b/components/log-ingestor/src/bin/log_ingestor.rs
+index 6200961d..a766c841 100644
+--- a/components/log-ingestor/src/bin/log_ingestor.rs
++++ b/components/log-ingestor/src/bin/log_ingestor.rs
+@@ -59,6 +59,8 @@ async fn main() -> anyhow::Result<()> {
+     let (config, credentials) = read_config_and_credentials(&args)?;
+     let _guard = clp_rust_utils::logging::set_up_logging("log_ingestor.log");
+ 
++    let _tel_guard = clp_rust_utils::telemetry::init_telemetry(&config.telemetry)?;
++
+     let addr = format!("{}:{}", args.host, args.port);
+     let listener = tokio::net::TcpListener::bind(&addr)
+         .await
+diff --git a/components/log-ingestor/src/compression/buffer.rs b/components/log-ingestor/src/compression/buffer.rs
+index 79d5bba5..41491bdf 100644
+--- a/components/log-ingestor/src/compression/buffer.rs
++++ b/components/log-ingestor/src/compression/buffer.rs
+@@ -36,6 +36,7 @@ pub struct Buffer<Submitter: BufferSubmitter> {
+     buf: Vec<S3ObjectMetadataId>,
+     total_size: u64,
+     size_threshold: u64,
++    telemetry: TelemetryMeter,
+ }
+ 
+ impl<Submitter: BufferSubmitter> Buffer<Submitter> {
+@@ -43,13 +44,14 @@ impl<Submitter: BufferSubmitter> Buffer<Submitter> {
+     ///
+     /// # Returns
+     ///
+-    /// A newly created [`Buffer`] with the given submitter of type `T` and size threshold.
+-    pub const fn new(submitter: Submitter, size_threshold: u64) -> Self {
++    /// A newly created [`Buffer`] with the given submitter and size threshold.
++    pub fn new(submitter: Submitter, size_threshold: u64) -> Self {
+         Self {
+             submitter,
+             buf: Vec::new(),
+             total_size: 0,
+             size_threshold,
++            telemetry: TelemetryMeter::new(),
+         }
+     }
+ 
+@@ -71,6 +73,7 @@ impl<Submitter: BufferSubmitter> Buffer<Submitter> {
+     ) -> Result<bool> {
+         let mut submission_triggered = false;
+         for entry in object_metadata_to_ingest {
++            self.telemetry.ingest(entry.size);
+             self.total_size += entry.size;
+             self.buf.push(entry.id);
+ 
+@@ -115,3 +118,30 @@ impl<Submitter: BufferSubmitter> Buffer<Submitter> {
+         self.total_size = 0;
+     }
+ }
++
++/// Telemetry counters for tracking ingested data.
++struct TelemetryMeter {
++    total_num_bytes: opentelemetry::metrics::Counter<u64>,
++    total_num_objects: opentelemetry::metrics::Counter<u64>,
++}
++
++impl TelemetryMeter {
++    /// Factory function.
++    ///
++    /// # Returns
++    ///
++    /// A newly created [`TelemetryMeter`] with counters registered in the global meter provider.
++    fn new() -> Self {
++        let meter = opentelemetry::global::meter("log-ingestor");
++        Self {
++            total_num_bytes: meter.u64_counter("clp.ingest.total_num_bytes").build(),
++            total_num_objects: meter.u64_counter("clp.ingest.total_num_objects").build(),
++        }
++    }
++
++    /// Records the ingestion of an object with the given number of bytes.
++    fn ingest(&self, num_bytes: u64) {
++        self.total_num_bytes.add(num_bytes, &[]);
++        self.total_num_objects.add(1, &[]);
++    }
++}
