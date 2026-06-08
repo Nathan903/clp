@@ -63,14 +63,15 @@ distributedDeployment: false
 # Number of concurrent processes per worker pod.
 workerConcurrency: 8
 
-# Per-component node scheduling and replica config.
-# Each component accepts: replicas (workers only), nodeSelector, affinity, tolerations,
-# topologySpreadConstraints.
+# Per-component node scheduling, replica, and concurrency config.
+# Each component accepts: replicas (workers only), slotsPerPod (workers only), nodeSelector,
+# affinity, tolerations, topologySpreadConstraints.
 #
 # Example:
 #   scheduling:
 #     compressionWorker:
 #       replicas: 3
+#       slotsPerPod: 8
 #       nodeSelector:
 #         yscope.io/nodeType: "compression"
 #       tolerations:

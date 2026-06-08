@@ -84,7 +84,7 @@ spec:
             "/opt/clp/lib/python3/site-packages/bin/celery",
             "-A", "job_orchestration.executor.compress",
             "worker",
-            "--concurrency", "{{ .Values.workerConcurrency }}",
+            "--concurrency", "{{ .Values.scheduling.compressionWorker.slotsPerPod | default .Values.workerConcurrency }}",
             "--loglevel", "WARNING",
             "-Q", "compression",
             "-n", "compression-worker@%h"

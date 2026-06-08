@@ -95,10 +95,14 @@ in controller.py, ensuring feature parity between Docker Compose and Helm deploy
 {{- $timestampNs := now.UnixNano -}}
 {{- $compressionWorkerScheduling := .Values.scheduling.compressionWorker -}}
 {{- $compressionWorkerReplicas := $compressionWorkerScheduling.replicas | default 1 | int -}}
-{{- $queryWorkerReplicas := .Values.scheduling.queryWorker.replicas | default 1 | int -}}
-{{- $reducerReplicas := .Values.scheduling.reducer.replicas | default 1 | int -}}
-{{- $workerConcurrency := .Values.workerConcurrency | default 8 | int -}}
-{{- printf `{"resourceMetrics":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"controller"}}]},"scopeMetrics":[{"scope":{"name":"clp.controller"},"metrics":[{"name":"clp.deployment.compression_worker_replicas","gauge":{"dataPoints":[{"asInt":"%d","timeUnixNano":"%d"}]}},{"name":"clp.deployment.compression_worker_concurrency","gauge":{"dataPoints":[{"asInt":"%d","timeUnixNano":"%d"}]}},{"name":"clp.deployment.query_worker_replicas","gauge":{"dataPoints":[{"asInt":"%d","timeUnixNano":"%d"}]}},{"name":"clp.deployment.query_worker_concurrency","gauge":{"dataPoints":[{"asInt":"%d","timeUnixNano":"%d"}]}},{"name":"clp.deployment.reducer_replicas","gauge":{"dataPoints":[{"asInt":"%d","timeUnixNano":"%d"}]}},{"name":"clp.deployment.reducer_concurrency","gauge":{"dataPoints":[{"asInt":"%d","timeUnixNano":"%d"}]}}]}]}]}` $compressionWorkerReplicas $timestampNs $workerConcurrency $timestampNs $queryWorkerReplicas $timestampNs $workerConcurrency $timestampNs $reducerReplicas $timestampNs $workerConcurrency $timestampNs -}}
+{{- $compressionWorkerConcurrency := $compressionWorkerScheduling.slotsPerPod | default .Values.workerConcurrency | default 8 | int -}}
+{{- $queryWorkerScheduling := .Values.scheduling.queryWorker -}}
+{{- $queryWorkerReplicas := $queryWorkerScheduling.replicas | default 1 | int -}}
+{{- $queryWorkerConcurrency := $queryWorkerScheduling.slotsPerPod | default .Values.workerConcurrency | default 8 | int -}}
+{{- $reducerScheduling := .Values.scheduling.reducer -}}
+{{- $reducerReplicas := $reducerScheduling.replicas | default 1 | int -}}
+{{- $reducerConcurrency := $reducerScheduling.slotsPerPod | default .Values.workerConcurrency | default 8 | int -}}
+{{- printf `{"resourceMetrics":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"controller"}}]},"scopeMetrics":[{"scope":{"name":"clp.controller"},"metrics":[{"name":"clp.deployment.compression_worker_replicas","gauge":{"dataPoints":[{"asInt":"%d","timeUnixNano":"%d"}]}},{"name":"clp.deployment.compression_worker_concurrency","gauge":{"dataPoints":[{"asInt":"%d","timeUnixNano":"%d"}]}},{"name":"clp.deployment.query_worker_replicas","gauge":{"dataPoints":[{"asInt":"%d","timeUnixNano":"%d"}]}},{"name":"clp.deployment.query_worker_concurrency","gauge":{"dataPoints":[{"asInt":"%d","timeUnixNano":"%d"}]}},{"name":"clp.deployment.reducer_replicas","gauge":{"dataPoints":[{"asInt":"%d","timeUnixNano":"%d"}]}},{"name":"clp.deployment.reducer_concurrency","gauge":{"dataPoints":[{"asInt":"%d","timeUnixNano":"%d"}]}}]}]}]}` $compressionWorkerReplicas $timestampNs $compressionWorkerConcurrency $timestampNs $queryWorkerReplicas $timestampNs $queryWorkerConcurrency $timestampNs $reducerReplicas $timestampNs $reducerConcurrency $timestampNs -}}
 {{- end -}}
 
 {{/*
