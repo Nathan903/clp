@@ -28,6 +28,10 @@ from typing import Any
 import celery
 import msgpack
 import pymongo
+from opentelemetry import metrics
+from opentelemetry.metrics import CallbackOptions, Observation
+from clp_py_utils.telemetry import init_telemetry, shutdown_telemetry
+import atexit
 from clp_py_utils.clp_config import (
     ClpConfig,
     Database,
@@ -85,6 +89,32 @@ logger = get_logger("search-job-handler")
 
 # Dictionary of active jobs indexed by job id
 active_jobs: dict[str, QueryJob] = {}
+
+meter = metrics.get_meter("clp_py_utils")
+
+def active_jobs_callback(options: CallbackOptions):
+    yield Observation(len(active_jobs))
+
+def outstanding_tasks_callback(options: CallbackOptions):
+    outstanding_tasks = 0
+    for job in active_jobs.values():
+        if isinstance(job, SearchJob):
+            outstanding_tasks += job.num_archives_to_search - job.num_archives_searched
+        else:
+            outstanding_tasks += 1
+    yield Observation(outstanding_tasks)
+
+meter.create_observable_gauge(
+    "clp.scheduler.query.active_jobs",
+    callbacks=[active_jobs_callback],
+    description="Number of active query jobs",
+)
+meter.create_observable_gauge(
+    "clp.scheduler.query.outstanding_tasks",
+    callbacks=[outstanding_tasks_callback],
+    description="Total number of outstanding query tasks",
+)
+
 
 # Dictionary that maps IDs of file splits being extracted to IDs of jobs waiting for them
 active_file_split_ir_extractions: dict[str, list[str]] = {}
@@ -1156,6 +1186,9 @@ async def main(argv: list[str]) -> int:
     except Exception:
         logger.exception(f"Failed to initialize {QUERY_SCHEDULER_COMPONENT_NAME}.")
         return -1
+
+    init_telemetry()
+    atexit.register(shutdown_telemetry)
 
     reducer_connection_queue = asyncio.Queue(32)
 
