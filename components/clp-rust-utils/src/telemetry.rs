@@ -22,6 +22,13 @@ impl Drop for TelemetryGuard {
     }
 }
 
+impl TelemetryGuard {
+    /// Returns a clone of the meter provider, which can be used to set the global provider.
+    pub fn provider(&self) -> Option<SdkMeterProvider> {
+        self.provider.clone()
+    }
+}
+
 impl From<Option<SdkMeterProvider>> for TelemetryGuard {
     fn from(provider: Option<SdkMeterProvider>) -> Self {
         Self { provider }
@@ -59,7 +66,6 @@ pub fn init_telemetry(telemetry_config: &Telemetry) -> Result<Option<TelemetryGu
 
     let provider = SdkMeterProvider::builder().with_reader(reader).build();
 
-    global::set_meter_provider(provider.clone());
     Ok(Some(TelemetryGuard::from(Some(provider))))
 }
 
