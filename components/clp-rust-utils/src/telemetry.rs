@@ -12,6 +12,17 @@ pub struct TelemetryGuard {
     provider: Option<SdkMeterProvider>,
 }
 
+impl TelemetryGuard {
+    /// Returns a clone of the meter provider, which can be used to set the global provider.
+    ///
+    /// # Returns
+    ///
+    /// A clone of the meter provider, or `None` if it was already taken.
+    pub fn provider(&self) -> Option<SdkMeterProvider> {
+        self.provider.clone()
+    }
+}
+
 impl Drop for TelemetryGuard {
     fn drop(&mut self) {
         if let Some(p) = self.provider.take()
@@ -19,13 +30,6 @@ impl Drop for TelemetryGuard {
         {
             tracing::error!(err = ? err, "Failed to shutdown OpenTelemetry meter provider.");
         }
-    }
-}
-
-impl TelemetryGuard {
-    /// Returns a clone of the meter provider, which can be used to set the global provider.
-    pub fn provider(&self) -> Option<SdkMeterProvider> {
-        self.provider.clone()
     }
 }
 

@@ -1,3 +1,5 @@
+//! OpenTelemetry metrics for log-ingestor.
+
 use std::sync::LazyLock;
 use opentelemetry::metrics::Counter;
 
