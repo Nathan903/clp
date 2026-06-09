@@ -363,7 +363,7 @@ impl ClpDbIngestionConnector {
                     },
                     compression_job_id,
                     num_object_metadata_submitted: usize::try_from(num_submitted)
-                        .expect("Number of files submitted is not `usize` compatible"),
+                        .expect("number of files submitted is not `usize` compatible"),
                 },
             )
             .collect();
@@ -651,7 +651,7 @@ impl ClpDbIngestionConnector {
         })?;
         if let Some(last_ingested_key) = last_ingested_key {
             config.start_after = Some(NonEmptyString::new(last_ingested_key).map_err(|_| {
-                anyhow::anyhow!("Invalid last ingested key stored in CLP DB: empty string")
+                anyhow::anyhow!("invalid last ingested key stored in CLP DB: empty string")
             })?);
         }
         Ok(config)
@@ -855,7 +855,7 @@ impl ClpIngestionState {
         .await?;
         if curr_status != ClpIngestionJobStatus::Running {
             return Err(anyhow::anyhow!(
-                "Job status update failed. The job may not exist or is not in the running state."
+                "job status update failed; the job may not exist or is not in the running state"
             ));
         }
 
@@ -1102,7 +1102,7 @@ impl ClpCompressionState {
             .await?;
         let compression_job_id =
             CompressionJobId::try_from(result.last_insert_id()).map_err(|_| {
-                anyhow::anyhow!("The retrieved ID overflows: {}", result.last_insert_id())
+                anyhow::anyhow!("the retrieved ID overflows: {}", result.last_insert_id())
             })?;
 
         // Update compression job ID for ingested objects.
@@ -1136,7 +1136,7 @@ impl ClpCompressionState {
                 != u64::try_from(chunk.len()).expect("size conversion should always succeed")
             {
                 return Err(anyhow::anyhow!(
-                    "Failed to update compression job ID for some objects."
+                    "failed to update compression job ID for some objects"
                 ));
             }
         }
@@ -1266,7 +1266,7 @@ impl ClpCompressionState {
                 .await?;
 
             let status = CompressionJobStatus::try_from(status)
-                .map_err(|_| anyhow::anyhow!("Invalid compression job status: {status}"))?;
+                .map_err(|_| anyhow::anyhow!("invalid compression job status: {status}"))?;
 
             match status {
                 CompressionJobStatus::Succeeded
@@ -1472,7 +1472,7 @@ async fn update_job_status(
     .await
     .map_err(|e| match e {
         sqlx::Error::RowNotFound => {
-            anyhow::anyhow!("Ingestion job with ID {job_id} not found.")
+            anyhow::anyhow!("ingestion job with ID {job_id} not found")
         }
         other => other.into(),
     })?;
