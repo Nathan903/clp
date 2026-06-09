@@ -12,11 +12,11 @@ pub struct TelemetryGuard {
 }
 
 impl TelemetryGuard {
-    /// Returns a clone of the meter provider, which can be used to set the global provider.
+    /// Returns the meter provider for setting the global meter provider.
     ///
     /// # Returns
     ///
-    /// A clone of the meter provider, or `None` if it was already taken.
+    /// The meter provider.
     #[must_use]
     pub fn provider(&self) -> Option<SdkMeterProvider> {
         self.provider.clone()
