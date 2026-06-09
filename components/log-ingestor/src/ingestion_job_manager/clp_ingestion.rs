@@ -639,15 +639,16 @@ impl ClpDbIngestionConnector {
         .fetch_one(&self.db_pool)
         .await
         .map_err(|e| {
-            const ERROR_MSG: &str = "Failed to fetch last ingested key for a running S3 scanner \
-                                     ingestion job from CLP DB.";
             tracing::error!(
                 job_id = ? job_id,
                 error = ? e,
                 "Failed to fetch last ingested key for a running S3 scanner ingestion job \
                     from CLP DB."
             );
-            anyhow::anyhow!(ERROR_MSG)
+            anyhow::anyhow!(
+                "failed to fetch last ingested key for a running S3 scanner ingestion job \
+                 from CLP DB"
+            )
         })?;
         if let Some(last_ingested_key) = last_ingested_key {
             config.start_after = Some(NonEmptyString::new(last_ingested_key).map_err(|_| {
@@ -1009,13 +1010,14 @@ impl S3ScannerState for ClpIngestionState {
             .rows_affected()
             == 0
         {
-            const ERROR_MSG: &str = "Failed to update last ingested key for S3 scanner state.";
             tracing::error!(
                 job_id = ? self.job_id,
                 last_ingested_key = ? last_ingested_key,
-                ERROR_MSG
+                "Failed to update last ingested key for S3 scanner state."
             );
-            return Err(anyhow::anyhow!(ERROR_MSG));
+            return Err(anyhow::anyhow!(
+                "failed to update last ingested key for S3 scanner state"
+            ));
         }
 
         self.ingest_and_send(tx, objects).await
@@ -1202,7 +1204,7 @@ impl ClpCompressionState {
             != u64::try_from(num_metadata_submitted).expect("size conversion should always succeed")
         {
             return Err(anyhow::anyhow!(
-                "Failed to update compression result for some objects."
+                "failed to update compression result for some objects"
             ));
         }
 
@@ -1484,14 +1486,13 @@ async fn update_job_status(
     }
 
     if !ClpIngestionJobStatus::is_valid_transition(curr_status, status) {
-        const ERROR_MSG: &str = "Invalid job status transition.";
         tracing::error!(
             job_id = ? job_id,
             from_status = ? curr_status,
             to_status = ? status,
-            ERROR_MSG
+            "Invalid job status transition."
         );
-        return Err(anyhow::anyhow!(ERROR_MSG));
+        return Err(anyhow::anyhow!("invalid job status transition"));
     }
 
     sqlx::query(formatcp!(
