@@ -60,10 +60,10 @@ async fn main() -> anyhow::Result<()> {
     let _guard = clp_rust_utils::logging::set_up_logging("log_ingestor.log");
 
     let _tel_guard = clp_rust_utils::telemetry::init_telemetry(&config.telemetry)?;
-    if let Some(guard) = &_tel_guard {
-        if let Some(provider) = guard.provider() {
-            opentelemetry::global::set_meter_provider(provider);
-        }
+    if let Some(guard) = &_tel_guard
+        && let Some(provider) = guard.provider()
+    {
+        opentelemetry::global::set_meter_provider(provider);
     }
 
     let addr = format!("{}:{}", args.host, args.port);

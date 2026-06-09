@@ -44,7 +44,7 @@ impl<Submitter: BufferSubmitter> Buffer<Submitter> {
     /// # Returns
     ///
     /// A newly created [`Buffer`] with the given submitter and size threshold.
-    pub fn new(submitter: Submitter, size_threshold: u64) -> Self {
+    pub const fn new(submitter: Submitter, size_threshold: u64) -> Self {
         Self {
             submitter,
             buf: Vec::new(),
@@ -115,4 +115,3 @@ impl<Submitter: BufferSubmitter> Buffer<Submitter> {
         self.total_size = 0;
     }
 }
-

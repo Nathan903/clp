@@ -2,7 +2,6 @@
 
 use std::env;
 
-use opentelemetry::global;
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
 
 use crate::{Error, clp_config::package::config::Telemetry};
@@ -18,6 +17,7 @@ impl TelemetryGuard {
     /// # Returns
     ///
     /// A clone of the meter provider, or `None` if it was already taken.
+    #[must_use]
     pub fn provider(&self) -> Option<SdkMeterProvider> {
         self.provider.clone()
     }
