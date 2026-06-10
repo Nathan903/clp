@@ -15,11 +15,11 @@ pub struct CompressionBufferEntry {
 pub trait BufferSubmitter {
     /// Submits the buffered object metadata for processing.
     ///
-    /// # Returns
+    /// # Returns:
     ///
     /// `Ok(())` on success.
     ///
-    /// # Errors
+    /// # Errors:
     ///
     /// Returns an [`anyhow::Error`] on failure.
     async fn submit(&self, buffer: &[S3ObjectMetadataId]) -> Result<()>;
@@ -27,7 +27,7 @@ pub trait BufferSubmitter {
 
 /// A buffer that accumulates object metadata IDs and submits when the size threshold is reached.
 ///
-/// # Type Parameters
+/// # Type Parameters:
 ///
 /// * [`Submitter`]: A type that implements the [`BufferSubmitter`] trait for submitting buffered
 ///   data.

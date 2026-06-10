@@ -20,16 +20,16 @@ fn read_config_and_credentials(
 ) -> anyhow::Result<(package::config::Config, package::credentials::Credentials)> {
     let config_path = std::path::Path::new(args.config.as_str());
     let config: package::config::Config = yaml::from_path(config_path)
-        .context(format!("cannot load config file {}", config_path.display()))?;
+        .context(format!("Cannot load config file {}", config_path.display()))?;
 
     let credentials = package::credentials::Credentials {
         database: package::credentials::Database {
             password: secrecy::SecretString::new(
                 std::env::var("CLP_DB_PASS")
-                    .context("expect `CLP_DB_PASS` env variable")?
+                    .context("Expect `CLP_DB_PASS` env variable")?
                     .into_boxed_str(),
             ),
-            user: std::env::var("CLP_DB_USER").context("expect `CLP_DB_USER` env variable")?,
+            user: std::env::var("CLP_DB_USER").context("Expect `CLP_DB_USER` env variable")?,
         },
     };
     Ok((config, credentials))
@@ -74,11 +74,11 @@ async fn main() -> anyhow::Result<()> {
     );
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
-        .context(format!("cannot listen to {addr}"))?;
+        .context(format!("Cannot listen to {addr}"))?;
 
     let client = api_server::client::Client::connect(&config, &credentials)
         .await
-        .context("cannot connect to CLP")?;
+        .context("Cannot connect to CLP")?;
 
     let router = api_server::routes::from_client(client)?;
     startup_counter.add(1, &[opentelemetry::KeyValue::new("type", "start")]);

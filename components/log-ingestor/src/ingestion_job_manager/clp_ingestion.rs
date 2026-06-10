@@ -363,7 +363,7 @@ impl ClpDbIngestionConnector {
                     },
                     compression_job_id,
                     num_object_metadata_submitted: usize::try_from(num_submitted)
-                        .expect("number of files submitted is not `usize` compatible"),
+                        .expect("Number of files submitted is not `usize` compatible"),
                 },
             )
             .collect();
@@ -639,20 +639,18 @@ impl ClpDbIngestionConnector {
         .fetch_one(&self.db_pool)
         .await
         .map_err(|e| {
+            const ERROR_MSG: &str = "Failed to fetch last ingested key for a running S3 scanner \
+                                     ingestion job from CLP DB.";
             tracing::error!(
                 job_id = ? job_id,
                 error = ? e,
-                "Failed to fetch last ingested key for a running S3 scanner ingestion job \
-                    from CLP DB."
+                ERROR_MSG
             );
-            anyhow::anyhow!(
-                "failed to fetch last ingested key for a running S3 scanner ingestion job \
-                 from CLP DB"
-            )
+            anyhow::anyhow!(ERROR_MSG)
         })?;
         if let Some(last_ingested_key) = last_ingested_key {
             config.start_after = Some(NonEmptyString::new(last_ingested_key).map_err(|_| {
-                anyhow::anyhow!("invalid last ingested key stored in CLP DB: empty string")
+                anyhow::anyhow!("Invalid last ingested key stored in CLP DB: empty string")
             })?);
         }
         Ok(config)
@@ -856,7 +854,7 @@ impl ClpIngestionState {
         .await?;
         if curr_status != ClpIngestionJobStatus::Running {
             return Err(anyhow::anyhow!(
-                "job status update failed; the job may not exist or is not in the running state"
+                "Job status update failed. The job may not exist or is not in the running state."
             ));
         }
 
@@ -1010,14 +1008,13 @@ impl S3ScannerState for ClpIngestionState {
             .rows_affected()
             == 0
         {
+            const ERROR_MSG: &str = "Failed to update last ingested key for S3 scanner state.";
             tracing::error!(
                 job_id = ? self.job_id,
                 last_ingested_key = ? last_ingested_key,
-                "Failed to update last ingested key for S3 scanner state."
+                ERROR_MSG
             );
-            return Err(anyhow::anyhow!(
-                "failed to update last ingested key for S3 scanner state"
-            ));
+            return Err(anyhow::anyhow!(ERROR_MSG));
         }
 
         self.ingest_and_send(tx, objects).await
@@ -1104,7 +1101,7 @@ impl ClpCompressionState {
             .await?;
         let compression_job_id =
             CompressionJobId::try_from(result.last_insert_id()).map_err(|_| {
-                anyhow::anyhow!("the retrieved ID overflows: {}", result.last_insert_id())
+                anyhow::anyhow!("The retrieved ID overflows: {}", result.last_insert_id())
             })?;
 
         // Update compression job ID for ingested objects.
@@ -1138,7 +1135,7 @@ impl ClpCompressionState {
                 != u64::try_from(chunk.len()).expect("size conversion should always succeed")
             {
                 return Err(anyhow::anyhow!(
-                    "failed to update compression job ID for some objects"
+                    "Failed to update compression job ID for some objects."
                 ));
             }
         }
@@ -1204,7 +1201,7 @@ impl ClpCompressionState {
             != u64::try_from(num_metadata_submitted).expect("size conversion should always succeed")
         {
             return Err(anyhow::anyhow!(
-                "failed to update compression result for some objects"
+                "Failed to update compression result for some objects."
             ));
         }
 
@@ -1268,7 +1265,7 @@ impl ClpCompressionState {
                 .await?;
 
             let status = CompressionJobStatus::try_from(status)
-                .map_err(|_| anyhow::anyhow!("invalid compression job status: {status}"))?;
+                .map_err(|_| anyhow::anyhow!("Invalid compression job status: {status}"))?;
 
             match status {
                 CompressionJobStatus::Succeeded
@@ -1474,7 +1471,7 @@ async fn update_job_status(
     .await
     .map_err(|e| match e {
         sqlx::Error::RowNotFound => {
-            anyhow::anyhow!("ingestion job with ID {job_id} not found")
+            anyhow::anyhow!("Ingestion job with ID {job_id} not found.")
         }
         other => other.into(),
     })?;
@@ -1486,13 +1483,14 @@ async fn update_job_status(
     }
 
     if !ClpIngestionJobStatus::is_valid_transition(curr_status, status) {
+        const ERROR_MSG: &str = "Invalid job status transition.";
         tracing::error!(
             job_id = ? job_id,
             from_status = ? curr_status,
             to_status = ? status,
-            "Invalid job status transition."
+            ERROR_MSG
         );
-        return Err(anyhow::anyhow!("invalid job status transition"));
+        return Err(anyhow::anyhow!(ERROR_MSG));
     }
 
     sqlx::query(formatcp!(

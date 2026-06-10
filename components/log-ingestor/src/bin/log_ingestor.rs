@@ -24,7 +24,7 @@ fn read_config_and_credentials(
 ) -> anyhow::Result<(package::config::Config, package::credentials::Credentials)> {
     let config_path = std::path::Path::new(args.config.as_str());
     let config: package::config::Config = yaml::from_path(config_path).context(format!(
-        "failed to load config file {}",
+        "Failed to load config file {}",
         config_path.display()
     ))?;
 
@@ -32,10 +32,10 @@ fn read_config_and_credentials(
         database: package::credentials::Database {
             password: secrecy::SecretString::new(
                 std::env::var("CLP_DB_PASS")
-                    .context("expect `CLP_DB_PASS` env variable")?
+                    .context("Expect `CLP_DB_PASS` env variable")?
                     .into_boxed_str(),
             ),
-            user: std::env::var("CLP_DB_USER").context("expect `CLP_DB_USER` env variable")?,
+            user: std::env::var("CLP_DB_USER").context("Expect `CLP_DB_USER` env variable")?,
         },
     };
     Ok((config, credentials))
@@ -69,7 +69,7 @@ async fn main() -> anyhow::Result<()> {
     let addr = format!("{}:{}", args.host, args.port);
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
-        .context(format!("cannot listen to {addr}"))?;
+        .context(format!("Cannot listen to {addr}"))?;
 
     let log_ingestor_manager_state = IngestionJobManagerState::from_config(config, credentials)
         .await
