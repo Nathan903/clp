@@ -43,7 +43,7 @@ impl<Submitter: BufferSubmitter> Buffer<Submitter> {
     ///
     /// # Returns
     ///
-    /// A newly created [`Buffer`] with the given submitter and size threshold.
+    /// A newly created [`Buffer`] with the given submitter of type `T` and size threshold.
     pub const fn new(submitter: Submitter, size_threshold: u64) -> Self {
         Self {
             submitter,

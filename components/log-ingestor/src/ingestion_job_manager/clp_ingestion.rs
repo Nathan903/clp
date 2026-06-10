@@ -644,7 +644,8 @@ impl ClpDbIngestionConnector {
             tracing::error!(
                 job_id = ? job_id,
                 error = ? e,
-                ERROR_MSG
+                "Failed to fetch last ingested key for a running S3 scanner ingestion job \
+                    from CLP DB."
             );
             anyhow::anyhow!(ERROR_MSG)
         })?;
