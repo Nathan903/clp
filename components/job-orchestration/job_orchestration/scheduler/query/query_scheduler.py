@@ -393,6 +393,8 @@ def set_job_or_task_status(
     :return: True on success, False if the update fails or an exception occurs while interacting
     with the database.
     """
+    task_id = kwargs.pop("task_id", None)
+    
     field_set_expressions = [f"status={status}"]
     if QUERY_JOBS_TABLE_NAME == table_name:
         id_col_name = "id"
@@ -408,6 +410,9 @@ def set_job_or_task_status(
 
     if prev_status is not None:
         update += f" AND status={prev_status}"
+        
+    if task_id is not None:
+        update += f" AND id={task_id}"
 
     with contextlib.closing(db_conn.cursor()) as cursor:
         cursor.execute(update)
@@ -919,6 +924,8 @@ async def handle_finished_search_job(
         task_result = QueryTaskResult.model_validate(task_result_obj)
         task_id = task_result.task_id
         task_status = task_result.status
+
+
         if not task_status == QueryTaskStatus.SUCCEEDED:
             new_job_status = QueryJobStatus.FAILED
             logger.error(
@@ -931,6 +938,15 @@ async def handle_finished_search_job(
                 f"Search task job-{job_id}-task-{task_id} succeeded in "
                 f"{task_result.duration} second(s)."
             )
+
+        set_job_or_task_status(
+            db_conn,
+            QUERY_TASKS_TABLE_NAME,
+            job_id,
+            task_status,
+            task_id=task_id,
+            duration=task_result.duration,
+        )
 
     if new_job_status != QueryJobStatus.FAILED:
         max_num_results = job.search_config.max_num_results
@@ -1012,6 +1028,9 @@ async def handle_finished_stream_extraction_job(
     else:
         task_result = QueryTaskResult.model_validate(task_results[0])
         task_id = task_result.task_id
+        task_status = task_result.status
+
+
         if not QueryTaskStatus.SUCCEEDED == task_result.status:
             logger.error(
                 f"Extraction task job-{job_id}-task-{task_id} failed. "
@@ -1023,6 +1042,15 @@ async def handle_finished_stream_extraction_job(
                 f"Extraction task job-{job_id}-task-{task_id} succeeded in "
                 f"{task_result.duration} second(s)."
             )
+
+        set_job_or_task_status(
+            db_conn,
+            QUERY_TASKS_TABLE_NAME,
+            job_id,
+            task_result.status,
+            task_id=task_id,
+            duration=task_result.duration,
+        )
 
     if set_job_or_task_status(
         db_conn,
