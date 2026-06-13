@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import atexit
 import concurrent.futures
 import contextlib
 import datetime
@@ -44,6 +45,9 @@ from clp_py_utils.clp_metadata_db_utils import (
 from clp_py_utils.core import read_yaml_config_file
 from clp_py_utils.decorators import exception_default_value
 from clp_py_utils.sql_adapter import ConnectionPoolWrapper, SqlAdapter
+from clp_py_utils.telemetry import init_telemetry, shutdown_telemetry
+from opentelemetry import metrics
+from opentelemetry.metrics import CallbackOptions, Observation
 from pydantic import ValidationError
 
 from job_orchestration.executor.query.celery import app
@@ -93,6 +97,35 @@ active_file_split_ir_extractions: dict[str, list[str]] = {}
 active_archive_json_extractions: dict[str, list[str]] = {}
 
 reducer_connection_queue: asyncio.Queue | None = None
+
+# OpenTelemetry metrics
+meter = metrics.get_meter("query-scheduler")
+
+
+def _observe_active_jobs(options: CallbackOptions):
+    yield Observation(len(active_jobs))
+
+
+def _observe_outstanding_tasks(options: CallbackOptions):
+    num_outstanding_tasks = 0
+    for job in active_jobs.values():
+        if isinstance(job, SearchJob):
+            num_outstanding_tasks += job.num_archives_to_search - job.num_archives_searched
+        else:
+            num_outstanding_tasks += 1
+    yield Observation(num_outstanding_tasks)
+
+
+meter.create_observable_gauge(
+    "clp.query.active_jobs",
+    callbacks=[_observe_active_jobs],
+    description="Number of active query jobs",
+)
+meter.create_observable_gauge(
+    "clp.query.outstanding_tasks",
+    callbacks=[_observe_outstanding_tasks],
+    description="Total number of outstanding tasks across all active query jobs",
+)
 
 
 class DispatchExecutor:
@@ -360,6 +393,8 @@ def set_job_or_task_status(
     :return: True on success, False if the update fails or an exception occurs while interacting
     with the database.
     """
+    task_id = kwargs.pop("task_id", None)
+    
     field_set_expressions = [f"status={status}"]
     if QUERY_JOBS_TABLE_NAME == table_name:
         id_col_name = "id"
@@ -375,6 +410,8 @@ def set_job_or_task_status(
 
     if prev_status is not None:
         update += f" AND status={prev_status}"
+    if task_id is not None:
+        update += f" AND id={task_id}"
 
     with contextlib.closing(db_conn.cursor()) as cursor:
         cursor.execute(update)
@@ -899,6 +936,15 @@ async def handle_finished_search_job(
                 f"{task_result.duration} second(s)."
             )
 
+        set_job_or_task_status(
+            db_conn,
+            QUERY_TASKS_TABLE_NAME,
+            job_id,
+            task_status,
+            task_id=task_id,
+            duration=task_result.duration,
+        )
+
     if new_job_status != QueryJobStatus.FAILED:
         max_num_results = job.search_config.max_num_results
         # Check if we've searched all archives
@@ -979,6 +1025,7 @@ async def handle_finished_stream_extraction_job(
     else:
         task_result = QueryTaskResult.model_validate(task_results[0])
         task_id = task_result.task_id
+        task_status = task_result.status
         if not QueryTaskStatus.SUCCEEDED == task_result.status:
             logger.error(
                 f"Extraction task job-{job_id}-task-{task_id} failed. "
@@ -990,6 +1037,15 @@ async def handle_finished_stream_extraction_job(
                 f"Extraction task job-{job_id}-task-{task_id} succeeded in "
                 f"{task_result.duration} second(s)."
             )
+
+        set_job_or_task_status(
+            db_conn,
+            QUERY_TASKS_TABLE_NAME,
+            job_id,
+            task_result.status,
+            task_id=task_id,
+            duration=task_result.duration,
+        )
 
     if set_job_or_task_status(
         db_conn,
@@ -1156,6 +1212,9 @@ async def main(argv: list[str]) -> int:
     except Exception:
         logger.exception(f"Failed to initialize {QUERY_SCHEDULER_COMPONENT_NAME}.")
         return -1
+
+    init_telemetry()
+    atexit.register(shutdown_telemetry)
 
     reducer_connection_queue = asyncio.Queue(32)
 
