@@ -28,8 +28,8 @@ Existing Python services use stdlib loggers whose handlers are configured with s
 ## Rust
 
 Rust HTTP services should initialize `tracing` at process startup using
-[`clp_rust_utils::logging::set_up_logging`][clp-rust-logging] and keep the returned guard alive
-for the lifetime of the process:
+[`clp_rust_utils::logging::set_up_logging`][clp-rust-logging] and keep the returned
+guard alive for the lifetime of the process:
 
 ```rust
 let _guard = clp_rust_utils::logging::set_up_logging("service_name.log");
@@ -37,6 +37,14 @@ let _guard = clp_rust_utils::logging::set_up_logging("service_name.log");
 // Choose structured logging over formatting values directly into the message field.
 tracing::info!(job_id = compression_job_id, "Compression job completed.");
 ```
+
+`set_up_logging` wraps every output target (stdout and, when `CLP_LOGS_DIR` is set, the
+rolling file appender) in a lossless non-blocking writer. Log records are sent to a
+background worker thread so emitting a record does not block the calling task under
+normal conditions. In lossless mode records are never dropped: if the worker's channel
+were to fill, the writer blocks until space is available rather than discarding records.
+The returned `LoggingGuard` must be held until shutdown so the worker threads flush
+buffered records on exit.
 
 ## WebUI
 
