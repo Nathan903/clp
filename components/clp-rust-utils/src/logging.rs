@@ -4,12 +4,25 @@ use tracing_appender::{
 };
 use tracing_subscriber::{self, fmt::writer::MakeWriterExt};
 
+/// Opaque struct to hold the worker guards for the non-blocking loggers.
+/// These guards must be held for the lifetime of the program to ensure logs are flushed.
+pub struct LoggerGuards {
+    _stdout_guard: WorkerGuard,
+    _file_guard: Option<WorkerGuard>,
+}
+
 /// Initializes the global tracing subscriber with JSON-formatted output to stdout.
 ///
 /// If the `CLP_LOGS_DIR` environment variable is set, logs are also written to a
-/// rolling file (`{log_filename}`) in that directory. The returned [`WorkerGuard`]
-/// must be held for the lifetime of the program to ensure file logs are flushed.
-pub fn set_up_logging(log_filename: &str) -> Option<WorkerGuard> {
+/// rolling file (`{log_filename}`) in that directory. The returned [`LoggerGuards`]
+/// must be held for the lifetime of the program to ensure file and stdout logs are flushed.
+///
+/// Both stdout and file logging are configured to be non-blocking and lossless.
+pub fn set_up_logging(log_filename: &str) -> LoggerGuards {
+    let (non_blocking_stdout, stdout_guard) = tracing_appender::non_blocking::NonBlockingBuilder::default()
+        .lossy(false)
+        .finish(std::io::stdout());
+
     let subscriber = tracing_subscriber::fmt()
         .event_format(
             tracing_subscriber::fmt::format()
@@ -26,14 +39,23 @@ pub fn set_up_logging(log_filename: &str) -> Option<WorkerGuard> {
         let logs_directory = std::path::Path::new(logs_directory.as_str());
         let file_appender =
             RollingFileAppender::new(Rotation::HOURLY, logs_directory, log_filename);
-        let (non_blocking_writer, guard) = tracing_appender::non_blocking(file_appender);
+        let (non_blocking_file, file_guard) = tracing_appender::non_blocking::NonBlockingBuilder::default()
+            .lossy(false)
+            .finish(file_appender);
 
         subscriber
-            .with_writer(std::io::stdout.and(non_blocking_writer))
+            .with_writer(non_blocking_stdout.and(non_blocking_file))
             .init();
-        Some(guard)
+        
+        LoggerGuards {
+            _stdout_guard: stdout_guard,
+            _file_guard: Some(file_guard),
+        }
     } else {
-        subscriber.with_writer(std::io::stdout).init();
-        None
+        subscriber.with_writer(non_blocking_stdout).init();
+        LoggerGuards {
+            _stdout_guard: stdout_guard,
+            _file_guard: None,
+        }
     }
 }
