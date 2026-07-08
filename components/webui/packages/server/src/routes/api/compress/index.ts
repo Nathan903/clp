@@ -69,9 +69,26 @@ const plugin: FastifyPluginAsyncTypebox = async (fastify) => {
                 dataset,
                 timestampKey,
                 unstructured,
+                targetArchiveSize,
+                targetDictionariesSize,
+                targetEncodedFileSize,
+                targetSegmentSize,
             } = request.body;
 
             const jobConfig: ClpIoConfig = structuredClone(DEFAULT_COMPRESSION_JOB_CONFIG);
+
+            if ("number" === typeof targetArchiveSize) {
+                jobConfig.output.target_archive_size = targetArchiveSize;
+            }
+            if ("number" === typeof targetDictionariesSize) {
+                jobConfig.output.target_dictionaries_size = targetDictionariesSize;
+            }
+            if ("number" === typeof targetEncodedFileSize) {
+                jobConfig.output.target_encoded_file_size = targetEncodedFileSize;
+            }
+            if ("number" === typeof targetSegmentSize) {
+                jobConfig.output.target_segment_size = targetSegmentSize;
+            }
             // eslint-disable-next-line no-warning-comments
             // TODO: Add support for S3 input
             (jobConfig.input as ClpIoFsInputConfig).paths_to_compress = paths.map(

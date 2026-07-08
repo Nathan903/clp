@@ -241,11 +241,11 @@ def _make_clp_command_and_env(
     """
     path_prefix_to_remove = clp_config.input.path_prefix_to_remove
 
-    # fmt: off
     compression_cmd = [
         str(clp_home / "bin" / "clp"),
         "c", str(archive_output_dir),
         "--print-archive-stats-progress",
+        "--target-archive-size", str(clp_config.output.target_archive_size),
         "--target-dictionaries-size", str(clp_config.output.target_dictionaries_size),
         "--target-segment-size", str(clp_config.output.target_segment_size),
         "--target-encoded-file-size", str(clp_config.output.target_encoded_file_size),

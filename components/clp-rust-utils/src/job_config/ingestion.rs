@@ -73,6 +73,18 @@ pub mod s3 {
         /// Whether to treat the ingested objects as unstructured logs. Defaults to `false`.
         #[serde(default = "default_unstructured")]
         pub unstructured: bool,
+
+        #[serde(default)]
+        pub target_archive_size: Option<u64>,
+
+        #[serde(default)]
+        pub target_dictionaries_size: Option<u64>,
+
+        #[serde(default)]
+        pub target_encoded_file_size: Option<u64>,
+
+        #[serde(default)]
+        pub target_segment_size: Option<u64>,
     }
 
     /// Configuration for a SQS listener job.
