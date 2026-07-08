@@ -6,6 +6,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -14,14 +15,6 @@
 #include "../Defs.hpp"
 
 namespace clp_s::timestamp_parser {
-struct TimezoneInfo {
-    // Length of the timezone content consumed/emitted in the timestamp.
-    size_t timestamp_length;
-    // Length of the timezone specifier's `{...}` sequence in the pattern.
-    size_t pattern_length;
-    int offset;
-};
-
 /**
  * A class representing a validated timestamp pattern.
  */
@@ -52,7 +45,9 @@ public:
     // Methods
     [[nodiscard]] auto get_pattern() const -> std::string_view { return m_pattern; }
 
-    [[nodiscard]] auto get_optional_timezone_info() const -> std::optional<TimezoneInfo> const& {
+    // Tuple fields are the timezone size, the timezone pattern size (including `{}`), and offset.
+    [[nodiscard]] auto get_optional_timezone_info() const
+            -> std::optional<std::tuple<size_t, size_t, int>> const& {
         return m_optional_timezone_info;
     }
 
@@ -122,7 +117,7 @@ private:
     // Constructor
     TimestampPattern(
             std::string_view pattern,
-            std::optional<TimezoneInfo> optional_timezone_info,
+            std::optional<std::tuple<size_t, size_t, int>> optional_timezone_info,
             std::vector<std::pair<uint16_t, uint16_t>> month_name_offsets_and_lengths,
             std::vector<std::pair<uint16_t, uint16_t>> weekday_name_offsets_and_lengths,
             uint16_t month_name_bracket_pattern_length,
@@ -143,7 +138,7 @@ private:
 
     // Variables
     std::string m_pattern;
-    std::optional<TimezoneInfo> m_optional_timezone_info;
+    std::optional<std::tuple<size_t, size_t, int>> m_optional_timezone_info;
     std::vector<std::pair<uint16_t, uint16_t>> m_month_name_offsets_and_lengths;
     std::vector<std::pair<uint16_t, uint16_t>> m_weekday_name_offsets_and_lengths;
     uint16_t m_month_name_bracket_pattern_length{};
