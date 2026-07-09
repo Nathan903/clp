@@ -1235,6 +1235,15 @@ class DockerComposeController(BaseController):
         logger.info("Starting CLP using Docker Compose (%s orchestration)...", orchestration_type)
 
         cmd = ["docker", "compose", "--project-name", self._project_name]
+        if self._clp_config.api_server is not None:
+            cmd += ["--profile", "api-server"]
+        if (
+            self._clp_config.log_ingestor is not None
+            and StorageType.S3 == self._clp_config.logs_input.type
+        ):
+            cmd += ["--profile", "log-ingestor"]
+        if self._clp_config.mcp_server is not None:
+            cmd += ["--profile", "mcp-server"]
         cmd += ["--file", self._get_docker_file_name()]
         cmd += ["up", "--detach", "--wait"]
         subprocess.run(

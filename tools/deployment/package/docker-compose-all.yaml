@@ -563,6 +563,7 @@ services:
 
   mcp-server:
     <<: *service_defaults
+    profiles: ["mcp-server"]
     hostname: "mcp_server"
     deploy:
       # Value must be either 0 or 1. Set to 0 to disable the MCP server.
@@ -603,6 +604,7 @@ services:
 
   api-server:
     <<: *service_defaults
+    profiles: ["api-server"]
     hostname: "api_server"
     deploy:
       # Value must be either 0 or 1. Set to 0 to disable the API server.
@@ -644,6 +646,7 @@ services:
 
   log-ingestor:
     <<: *service_defaults
+    profiles: ["log-ingestor"]
     hostname: "log_ingestor"
     deploy:
       # Value must be either 0 or 1. Set to 0 to disable log-ingestor.
