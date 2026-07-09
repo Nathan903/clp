@@ -173,6 +173,7 @@ tasks:
           INCLUDE_PATTERNS: ["{{.OUTPUT_DIR}}"]
 
   core:
+    run: "once"
     cmds:
       - task: "core-generate"
       - task: "core-build"
