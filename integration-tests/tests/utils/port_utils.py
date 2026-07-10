@@ -38,45 +38,76 @@ class PortAssignment:
 
 def assign_ports_from_base(base_port: int, clp_config: ClpConfig) -> None:
     """
-    Assign ports to all components in `clp_config` that require them, starting from `base_port`.
-    Ports are assigned sequentially, with each component receiving the number of ports it requires.
+    Assign ports to all components in `clp_config` that require them, starting from the first
+    available range at or after `base_port`. Ports are assigned sequentially, with each component
+    receiving the number of ports it requires.
 
     :param base_port:
     :param clp_config:
-    :raise ValueError: If the base port is out of range, or if any required port is in use.
+    :raise ValueError: If no large enough port range is available.
     """
     # Discover which components need port assignments.
     port_assignments = _discover_port_assignments(clp_config)
     total_ports_needed = sum(assignment.port_count for assignment in port_assignments)
 
-    # Validate that all required ports are valid and available.
-    port_range = range(base_port, base_port + total_ports_needed)
-    _validate_port_range_bounds(port_range)
-    _check_ports_available(host="127.0.0.1", port_range=port_range)
+    # Find the first range large enough to assign all required ports.
+    port_range = _find_available_port_range(
+        base_port=base_port,
+        host="127.0.0.1",
+        port_count=total_ports_needed,
+    )
 
     # Assign ports to the components.
-    current_port = base_port
+    current_port = port_range.start
     for assignment in port_assignments:
         setattr(assignment.component, assignment.attr_name, current_port)
         current_port += assignment.port_count
 
 
-def _check_ports_available(host: str, port_range: range) -> None:
+def _find_available_port_range(base_port: int, host: str, port_count: int) -> range:
     """
-    Check that all ports in the given range are available for binding.
+    Find the first contiguous range of available ports at or after `base_port`.
+
+    :param base_port:
+    :param host:
+    :param port_count:
+    :return: The available port range.
+    :raise ValueError: If no large enough range is available.
+    """
+    if port_count <= 0:
+        return range(base_port, base_port)
+
+    candidate_base_port = base_port
+    while candidate_base_port + port_count - 1 <= MAX_PORT:
+        port_range = range(candidate_base_port, candidate_base_port + port_count)
+        _validate_port_range_bounds(port_range)
+
+        unavailable_port = _find_unavailable_port(host=host, port_range=port_range)
+        if unavailable_port is None:
+            return port_range
+
+        candidate_base_port = unavailable_port + 1
+
+    requested_range = range(base_port, base_port + port_count)
+    err_msg = (
+        f"No available range of {port_count} ports was found at or after "
+        f"{_format_port_range(requested_range)}."
+    )
+    raise ValueError(err_msg)
+
+
+def _find_unavailable_port(host: str, port_range: range) -> int | None:
+    """
+    Finds the first unavailable port in the given range.
 
     :param host:
     :param port_range:
-    :raise ValueError: If any port in the range is already in use.
+    :return: The first unavailable port, or None if all ports are available.
     """
     for port in port_range:
         if not _is_port_free(port=port, host=host):
-            range_str = _format_port_range(port_range)
-            err_msg = (
-                f"Port '{port}' in the desired range ({range_str}) is already in use. "
-                "Choose a different port range for the test environment."
-            )
-            raise ValueError(err_msg)
+            return port
+    return None
 
 
 def _discover_port_assignments(clp_config: ClpConfig) -> list[PortAssignment]:
