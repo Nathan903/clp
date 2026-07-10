@@ -55,6 +55,7 @@ services:
       service: "garbage-collector"
 
   api-server:
+    profiles: ["api-server"]
     extends:
       file: "docker-compose-all.yaml"
       service: "api-server"
@@ -75,11 +76,13 @@ services:
       service: "reducer"
 
   mcp-server:
+    profiles: ["mcp-server"]
     extends:
       file: "docker-compose-all.yaml"
       service: "mcp-server"
 
   log-ingestor:
+    profiles: ["log-ingestor"]
     extends:
       file: "docker-compose-all.yaml"
       service: "log-ingestor"

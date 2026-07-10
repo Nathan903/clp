@@ -82,9 +82,16 @@ services:
       service: "reducer"
 
   log-ingestor:
+    profiles: ["log-ingestor"]
     extends:
       file: "docker-compose-all.yaml"
       service: "log-ingestor"
+
+  mcp-server:
+    profiles: ["mcp-server"]
+    extends:
+      file: "docker-compose-all.yaml"
+      service: "mcp-server"
 
   otel-collector:
     extends:

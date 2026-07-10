@@ -83,6 +83,9 @@ DEFAULT_UID_GID = f"{os.getuid()}:{os.getgid()}"
 THIRD_PARTY_SERVICE_UID = 999
 THIRD_PARTY_SERVICE_GID = 999
 THIRD_PARTY_SERVICE_UID_GID = f"{THIRD_PARTY_SERVICE_UID}:{THIRD_PARTY_SERVICE_GID}"
+API_SERVER_COMPOSE_PROFILE = "api-server"
+LOG_INGESTOR_COMPOSE_PROFILE = "log-ingestor"
+MCP_SERVER_COMPOSE_PROFILE = "mcp-server"
 
 logger = logging.getLogger(__name__)
 
@@ -695,6 +698,11 @@ class BaseController(ABC):
 
         env_vars = EnvVarsDict()
 
+        # Service enablement
+        env_vars |= {
+            "CLP_API_SERVER_ENABLED": "1",
+        }
+
         # Connection config
         env_vars |= {
             "CLP_API_SERVER_HOST": _get_ip_from_hostname(self._clp_config.api_server.host),
@@ -726,6 +734,11 @@ class BaseController(ABC):
         resolved_logs_dir.mkdir(parents=True, exist_ok=True)
 
         env_vars = EnvVarsDict()
+
+        # Service enablement
+        env_vars |= {
+            "CLP_LOG_INGESTOR_ENABLED": "1",
+        }
 
         # Connection config
         env_vars |= {
@@ -1213,12 +1226,32 @@ class DockerComposeController(BaseController):
         env_vars |= self._set_up_env_for_mcp_server()
         env_vars |= self._set_up_env_for_garbage_collector()
 
+        self._set_compose_profiles(env_vars)
+
         # Write the environment variables to the `.env` file.
         with open(f"{self._clp_home}/.env", "w") as env_file:
             for key, value in env_vars.items():
                 if value is None:
                     continue
                 env_file.write(f"{key}={value}\n")
+
+    @staticmethod
+    def _set_compose_profiles(env_vars: EnvVarsDict) -> None:
+        """
+        Enables Docker Compose profiles required by configured optional services.
+
+        :param env_vars:
+        """
+        compose_profiles = []
+        if env_vars.get("CLP_API_SERVER_ENABLED") == "1":
+            compose_profiles.append(API_SERVER_COMPOSE_PROFILE)
+        if env_vars.get("CLP_LOG_INGESTOR_ENABLED") == "1":
+            compose_profiles.append(LOG_INGESTOR_COMPOSE_PROFILE)
+        if env_vars.get("CLP_MCP_SERVER_ENABLED") == "1":
+            compose_profiles.append(MCP_SERVER_COMPOSE_PROFILE)
+
+        if len(compose_profiles) > 0:
+            env_vars["COMPOSE_PROFILES"] = ",".join(compose_profiles)
 
     def start(self) -> None:
         """
