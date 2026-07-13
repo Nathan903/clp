@@ -1236,29 +1236,7 @@ class DockerComposeController(BaseController):
 
         cmd = ["docker", "compose", "--project-name", self._project_name]
         cmd += ["--file", self._get_docker_file_name()]
-
-        # Extract active services to avoid `missing dependency` bug in Docker Compose when
-        # using `--wait` with `replicas: 0`.
-        try:
-            import json
-            config_cmd = cmd + ["config", "--format", "json"]
-            config_json_str = subprocess.check_output(config_cmd, cwd=self._clp_home, text=True)
-            config_json = json.loads(config_json_str)
-            active_services = []
-            for service, config in config_json.get("services", {}).items():
-                deploy = config.get("deploy") or {}
-                replicas = deploy.get("replicas")
-                if replicas == 0 or replicas == "0":
-                    continue
-                active_services.append(service)
-        except Exception as e:
-            logger.warning(f"Failed to parse compose config: {e}")
-            active_services = []
-
         cmd += ["up", "--detach", "--wait"]
-        if active_services:
-            cmd += active_services
-
         subprocess.run(
             cmd,
             cwd=self._clp_home,

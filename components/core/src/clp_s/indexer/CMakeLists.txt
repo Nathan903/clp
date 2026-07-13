@@ -112,6 +112,8 @@ set(
         ../SchemaReader.hpp
         ../SchemaTree.cpp
         ../SchemaTree.hpp
+        ../search/ast/SearchUtils.cpp
+        ../search/ast/SearchUtils.hpp
         ../TimestampDictionaryReader.cpp
         ../TimestampDictionaryReader.hpp
         ../TimestampEntry.cpp
@@ -144,7 +146,6 @@ if(CLP_BUILD_EXECUTABLES)
                 ${CURL_LIBRARIES}
                 clp::string_utils
                 clp_s::timestamp_parser
-                clp_s::search::ast
                 date::date
                 LibArchive::LibArchive
                 MariaDBClient::MariaDBClient
