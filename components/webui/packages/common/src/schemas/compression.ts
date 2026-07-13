@@ -56,8 +56,12 @@ const AbsolutePathSchema = Type.String({
  * Schema for request to create a new compression job.
  */
 const CompressionJobCreationSchema = Type.Object({
-    paths: Type.Array(AbsolutePathSchema, {minItems: 1}),
     dataset: Type.Optional(DatasetNameSchema),
+    paths: Type.Array(AbsolutePathSchema, {minItems: 1}),
+    targetArchiveSize: Type.Optional(Type.Number()),
+    targetDictionariesSize: Type.Optional(Type.Number()),
+    targetEncodedFileSize: Type.Optional(Type.Number()),
+    targetSegmentSize: Type.Optional(Type.Number()),
     timestampKey: Type.Optional(Type.String()),
     unstructured: Type.Optional(Type.Boolean()),
 });

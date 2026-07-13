@@ -40,6 +40,67 @@ const DEFAULT_COMPRESSION_JOB_CONFIG: ClpIoConfig = Object.freeze({
     },
 });
 
+type JobBody = {
+    paths: string[];
+    dataset?: string;
+    timestampKey?: string;
+    unstructured?: boolean;
+    targetArchiveSize?: number;
+    targetDictionariesSize?: number;
+    targetEncodedFileSize?: number;
+    targetSegmentSize?: number;
+};
+
+/**
+ * Builds the compression job configuration from the request body.
+ *
+ * @param body
+ * @param logError
+ * @return The compression job configuration.
+ */
+const buildJobConfig = (
+    body: JobBody,
+    logError: (msg: string) => void
+): ClpIoConfig => {
+    const jobConfig: ClpIoConfig = structuredClone(DEFAULT_COMPRESSION_JOB_CONFIG);
+
+    if ("number" === typeof body.targetArchiveSize) {
+        jobConfig.output.target_archive_size = body.targetArchiveSize;
+    }
+    if ("number" === typeof body.targetDictionariesSize) {
+        jobConfig.output.target_dictionaries_size = body.targetDictionariesSize;
+    }
+    if ("number" === typeof body.targetEncodedFileSize) {
+        jobConfig.output.target_encoded_file_size = body.targetEncodedFileSize;
+    }
+    if ("number" === typeof body.targetSegmentSize) {
+        jobConfig.output.target_segment_size = body.targetSegmentSize;
+    }
+
+    // eslint-disable-next-line no-warning-comments
+    // TODO: Add support for S3 input
+    (jobConfig.input as ClpIoFsInputConfig).paths_to_compress = body.paths.map(
+        (path) => join(publicSettings.LogsInputRootDir ?? "", path)
+    );
+
+    if (CLP_STORAGE_ENGINES.CLP_S === publicSettings.ClpStorageEngine) {
+        jobConfig.input.unstructured = false;
+        if ("string" !== typeof body.dataset || 0 === body.dataset.length) {
+            logError("Unable to submit compression job to the SQL database");
+        } else {
+            jobConfig.input.dataset = body.dataset;
+        }
+        if ("undefined" !== typeof body.timestampKey) {
+            jobConfig.input.timestamp_key = body.timestampKey;
+        }
+        if (true === body.unstructured) {
+            jobConfig.input.unstructured = true;
+        }
+    }
+
+    return jobConfig;
+};
+
 /**
  * Compression API routes.
  *
@@ -64,35 +125,12 @@ const plugin: FastifyPluginAsyncTypebox = async (fastify) => {
             },
         },
         async (request, reply) => {
-            const {
-                paths,
-                dataset,
-                timestampKey,
-                unstructured,
-            } = request.body;
-
-            const jobConfig: ClpIoConfig = structuredClone(DEFAULT_COMPRESSION_JOB_CONFIG);
-            // eslint-disable-next-line no-warning-comments
-            // TODO: Add support for S3 input
-            (jobConfig.input as ClpIoFsInputConfig).paths_to_compress = paths.map(
-                (path) => join(publicSettings.LogsInputRootDir ?? "", path)
+            const jobConfig = buildJobConfig(
+                request.body,
+                (msg: string) => {
+                    request.log.error(msg);
+                }
             );
-
-            const clpStorageEngine = publicSettings.ClpStorageEngine;
-            if (CLP_STORAGE_ENGINES.CLP_S === clpStorageEngine) {
-                jobConfig.input.unstructured = false;
-                if ("string" !== typeof dataset || 0 === dataset.length) {
-                    request.log.error("Unable to submit compression job to the SQL database");
-                } else {
-                    jobConfig.input.dataset = dataset;
-                }
-                if ("undefined" !== typeof timestampKey) {
-                    jobConfig.input.timestamp_key = timestampKey;
-                }
-                if (true === unstructured) {
-                    jobConfig.input.unstructured = true;
-                }
-            }
 
             try {
                 const jobId = await CompressionJobDbManager.submitJob(jobConfig);

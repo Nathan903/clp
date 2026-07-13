@@ -241,7 +241,6 @@ def _make_clp_command_and_env(
     """
     path_prefix_to_remove = clp_config.input.path_prefix_to_remove
 
-    # fmt: off
     compression_cmd = [
         str(clp_home / "bin" / "clp"),
         "c", str(archive_output_dir),
