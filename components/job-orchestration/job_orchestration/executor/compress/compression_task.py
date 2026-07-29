@@ -240,15 +240,18 @@ def _make_clp_command_and_env(
     :return: Tuple of (compression_command, compression_env_vars)
     """
     path_prefix_to_remove = clp_config.input.path_prefix_to_remove
+    clp_output_config = clp_config.output.clp
+    if clp_output_config is None:
+        raise ValueError("Missing CLP-specific archive output configuration.")
 
     # fmt: off
     compression_cmd = [
         str(clp_home / "bin" / "clp"),
         "c", str(archive_output_dir),
         "--print-archive-stats-progress",
-        "--target-dictionaries-size", str(clp_config.output.target_dictionaries_size),
-        "--target-segment-size", str(clp_config.output.target_segment_size),
-        "--target-encoded-file-size", str(clp_config.output.target_encoded_file_size),
+        "--target-dictionaries-size", str(clp_output_config.target_dictionaries_size),
+        "--target-segment-size", str(clp_output_config.target_segment_size),
+        "--target-encoded-file-size", str(clp_output_config.target_encoded_file_size),
         "--compression-level", str(clp_config.output.compression_level),
     ]
     # fmt: on
@@ -286,13 +289,16 @@ def _make_clp_s_command_and_env(
     :param use_single_file_archive:
     :return: Tuple of (compression_command, compression_env_vars)
     """
+    clp_s_output_config = clp_config.output.clp_s
+    if clp_s_output_config is None:
+        raise ValueError("Missing CLP-S-specific archive output configuration.")
+
     # fmt: off
     compression_cmd = [
         str(clp_home / "bin" / "clp-s"),
         "c", str(archive_output_dir),
         "--print-archive-stats",
-        "--target-encoded-size",
-        str(clp_config.output.target_segment_size + clp_config.output.target_dictionaries_size),
+        "--target-encoded-size", str(clp_s_output_config.target_encoded_size),
         "--compression-level", str(clp_config.output.compression_level),
     ]
     # fmt: on

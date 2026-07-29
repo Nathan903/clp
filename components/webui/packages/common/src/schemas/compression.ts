@@ -127,12 +127,25 @@ const ClpIoS3ObjectMetadataInputConfigSchema = Type.Object({
  * Matching `OutputConfig` in `job_orchestration.scheduler.job_config`.
  */
 const ClpIoOutputConfigSchema = Type.Object({
+    clp: Type.Optional(Type.Object({
+        target_dictionaries_size: Type.Number(),
+        target_encoded_file_size: Type.Number(),
+        target_segment_size: Type.Number(),
+    })),
+    clp_s: Type.Optional(Type.Object({
+        target_encoded_size: Type.Number(),
+    })),
+    compression_level: Type.Number(),
+    target_uncompressed_size: Type.Number(),
+});
+
+const LegacyClpIoOutputConfigSchema = Type.Partial(Type.Object({
     compression_level: Type.Number(),
     target_archive_size: Type.Number(),
     target_dictionaries_size: Type.Number(),
     target_encoded_file_size: Type.Number(),
     target_segment_size: Type.Number(),
-});
+}));
 
 /**
  * Matching `ClpIoConfig` in `job_orchestration.scheduler.job_config`.
@@ -156,7 +169,10 @@ const ClpIoPartialConfigSchema =
         input: Type.Union([Type.Partial(ClpIoFsInputConfigSchema),
             Type.Partial(ClpIoS3InputConfigSchema),
             Type.Partial(ClpIoS3ObjectMetadataInputConfigSchema)]),
-        output: Type.Partial(ClpIoOutputConfigSchema),
+        output: Type.Union([
+            LegacyClpIoOutputConfigSchema,
+            Type.Partial(ClpIoOutputConfigSchema),
+        ]),
     });
 
 type ClpIoConfig = Static<typeof ClpIoConfigSchema>;

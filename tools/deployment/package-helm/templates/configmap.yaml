@@ -1,3 +1,53 @@
+{{- $archiveOutput := .Values.clpConfig.archive_output -}}
+{{- $hasLegacyArchiveOutput := or
+  (hasKey $archiveOutput "target_archive_size")
+  (hasKey $archiveOutput "target_dictionaries_size")
+  (hasKey $archiveOutput "target_encoded_file_size")
+  (hasKey $archiveOutput "target_segment_size") -}}
+{{- $targetUncompressedSize := 268435456 -}}
+{{- $clpTargetDictionariesSize := 33554432 -}}
+{{- $clpTargetEncodedFileSize := 268435456 -}}
+{{- $clpTargetSegmentSize := 268435456 -}}
+{{- $clpSTargetEncodedSize := 301989888 -}}
+{{- $hasCanonicalArchiveOutputOverride := and $hasLegacyArchiveOutput (or
+  (and (hasKey $archiveOutput "target_uncompressed_size")
+    (ne (int64 (get $archiveOutput "target_uncompressed_size")) (int64 $targetUncompressedSize)))
+  (and (hasKey $archiveOutput "clp") (or
+    (ne (int64 (get $archiveOutput.clp "target_dictionaries_size"))
+      (int64 $clpTargetDictionariesSize))
+    (ne (int64 (get $archiveOutput.clp "target_encoded_file_size"))
+      (int64 $clpTargetEncodedFileSize))
+    (ne (int64 (get $archiveOutput.clp "target_segment_size"))
+      (int64 $clpTargetSegmentSize))))
+  (and (hasKey $archiveOutput "clp_s")
+    (ne (int64 (get $archiveOutput.clp_s "target_encoded_size"))
+      (int64 $clpSTargetEncodedSize)))) -}}
+{{- if $hasCanonicalArchiveOutputOverride -}}
+{{- fail "legacy and canonical archive output fields cannot be mixed" -}}
+{{- end -}}
+{{- if $hasLegacyArchiveOutput -}}
+{{- /* Helm merges user values with chart defaults, so retained legacy fields select the legacy
+      vocabulary unless a non-default canonical override is also present. */ -}}
+{{- if hasKey $archiveOutput "target_archive_size" -}}
+{{- $targetUncompressedSize = get $archiveOutput "target_archive_size" -}}
+{{- end -}}
+{{- if hasKey $archiveOutput "target_dictionaries_size" -}}
+{{- $clpTargetDictionariesSize = get $archiveOutput "target_dictionaries_size" -}}
+{{- end -}}
+{{- if hasKey $archiveOutput "target_encoded_file_size" -}}
+{{- $clpTargetEncodedFileSize = get $archiveOutput "target_encoded_file_size" -}}
+{{- end -}}
+{{- if hasKey $archiveOutput "target_segment_size" -}}
+{{- $clpTargetSegmentSize = get $archiveOutput "target_segment_size" -}}
+{{- end -}}
+{{- $clpSTargetEncodedSize = add $clpTargetDictionariesSize $clpTargetSegmentSize -}}
+{{- else -}}
+{{- $targetUncompressedSize = $archiveOutput.target_uncompressed_size -}}
+{{- $clpTargetDictionariesSize = $archiveOutput.clp.target_dictionaries_size -}}
+{{- $clpTargetEncodedFileSize = $archiveOutput.clp.target_encoded_file_size -}}
+{{- $clpTargetSegmentSize = $archiveOutput.clp.target_segment_size -}}
+{{- $clpSTargetEncodedSize = $archiveOutput.clp_s.target_encoded_size -}}
+{{- end -}}
 apiVersion: "v1"
 kind: "ConfigMap"
 metadata:
@@ -60,13 +110,13 @@ data:
       {{- else }}
       retention_period: null
       {{- end }}
-      target_archive_size: {{ .Values.clpConfig.archive_output.target_archive_size | int }}
-      target_dictionaries_size: {{ .Values.clpConfig.archive_output.target_dictionaries_size
-        | int }}
-      target_encoded_file_size: {{ .Values.clpConfig.archive_output.target_encoded_file_size
-        | int }}
-      target_segment_size: {{ .Values.clpConfig.archive_output.target_segment_size
-        | int }}
+      target_uncompressed_size: {{ $targetUncompressedSize | int }}
+      clp:
+        target_dictionaries_size: {{ $clpTargetDictionariesSize | int }}
+        target_encoded_file_size: {{ $clpTargetEncodedFileSize | int }}
+        target_segment_size: {{ $clpTargetSegmentSize | int }}
+      clp_s:
+        target_encoded_size: {{ $clpSTargetEncodedSize | int }}
     compression_scheduler:
       jobs_poll_delay: {{ .Values.clpConfig.compression_scheduler.jobs_poll_delay }}
       logging_level: {{ .Values.clpConfig.compression_scheduler.logging_level | quote }}
@@ -344,14 +394,16 @@ data:
 
         "ArchiveOutputCompressionLevel":
           {{ .Values.clpConfig.archive_output.compression_level | int }},
-        "ArchiveOutputTargetArchiveSize":
-          {{ .Values.clpConfig.archive_output.target_archive_size | int }},
-        "ArchiveOutputTargetDictionariesSize":
-          {{ .Values.clpConfig.archive_output.target_dictionaries_size | int }},
-        "ArchiveOutputTargetEncodedFileSize":
-          {{ .Values.clpConfig.archive_output.target_encoded_file_size | int }},
-        "ArchiveOutputTargetSegmentSize":
-          {{ .Values.clpConfig.archive_output.target_segment_size | int }},
+        "ArchiveOutputTargetUncompressedSize":
+          {{ $targetUncompressedSize | int }},
+        "ArchiveOutputClpTargetDictionariesSize":
+          {{ $clpTargetDictionariesSize | int }},
+        "ArchiveOutputClpTargetEncodedFileSize":
+          {{ $clpTargetEncodedFileSize | int }},
+        "ArchiveOutputClpTargetSegmentSize":
+          {{ $clpTargetSegmentSize | int }},
+        "ArchiveOutputClpSTargetEncodedSize":
+          {{ $clpSTargetEncodedSize | int }},
 
         {{- if .Values.clpConfig.presto }}
         "PrestoHost": "{{ include "clp.prestoHost" . }}",

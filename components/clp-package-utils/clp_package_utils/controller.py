@@ -834,14 +834,21 @@ class BaseController(ABC):
             "StreamFilesS3Region": stream_files_s3_region,
             "StreamTargetUncompressedSize": self._clp_config.stream_output.target_uncompressed_size,
             "ArchiveOutputCompressionLevel": self._clp_config.archive_output.compression_level,
-            "ArchiveOutputTargetArchiveSize": self._clp_config.archive_output.target_archive_size,
-            "ArchiveOutputTargetDictionariesSize": (
-                self._clp_config.archive_output.target_dictionaries_size
+            "ArchiveOutputTargetUncompressedSize": (
+                self._clp_config.archive_output.target_uncompressed_size
             ),
-            "ArchiveOutputTargetEncodedFileSize": (
-                self._clp_config.archive_output.target_encoded_file_size
+            "ArchiveOutputClpTargetDictionariesSize": (
+                self._clp_config.archive_output.clp.target_dictionaries_size
             ),
-            "ArchiveOutputTargetSegmentSize": self._clp_config.archive_output.target_segment_size,
+            "ArchiveOutputClpTargetEncodedFileSize": (
+                self._clp_config.archive_output.clp.target_encoded_file_size
+            ),
+            "ArchiveOutputClpTargetSegmentSize": (
+                self._clp_config.archive_output.clp.target_segment_size
+            ),
+            "ArchiveOutputClpSTargetEncodedSize": (
+                self._clp_config.archive_output.clp_s.target_encoded_size
+            ),
             "PrestoHost": presto_host,
             "PrestoPort": presto_port,
         }
@@ -1069,6 +1076,24 @@ class BaseController(ABC):
         """
         with settings_file_path.open("r") as settings_json_file:
             settings_object = json.loads(settings_json_file.read())
+        server_settings = settings_object.get("server")
+        if isinstance(server_settings, dict):
+            legacy_archive_output_settings = {
+                "ArchiveOutputTargetArchiveSize": "ArchiveOutputTargetUncompressedSize",
+                "ArchiveOutputTargetDictionariesSize": ("ArchiveOutputClpTargetDictionariesSize"),
+                "ArchiveOutputTargetEncodedFileSize": ("ArchiveOutputClpTargetEncodedFileSize"),
+                "ArchiveOutputTargetSegmentSize": "ArchiveOutputClpTargetSegmentSize",
+            }
+            for legacy_key, canonical_key in legacy_archive_output_settings.items():
+                if legacy_key in server_settings and canonical_key not in server_settings:
+                    server_settings[canonical_key] = server_settings.pop(legacy_key)
+            if "ArchiveOutputClpSTargetEncodedSize" not in server_settings:
+                dictionaries_size = server_settings.get("ArchiveOutputClpTargetDictionariesSize")
+                segment_size = server_settings.get("ArchiveOutputClpTargetSegmentSize")
+                if isinstance(dictionaries_size, int) and isinstance(segment_size, int):
+                    server_settings["ArchiveOutputClpSTargetEncodedSize"] = (
+                        dictionaries_size + segment_size
+                    )
         self._update_settings_object("", settings_object, updates)
 
         return settings_object

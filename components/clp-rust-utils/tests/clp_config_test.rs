@@ -1,6 +1,12 @@
 use clp_rust_utils::{
     clp_config::{AwsAuthentication, AwsCredentials, S3Config},
-    job_config::{ClpIoConfig, InputConfig, OutputConfig, S3ObjectMetadataInputConfig},
+    job_config::{
+        ClpIoConfig,
+        ClpSOutputConfig,
+        InputConfig,
+        OutputConfig,
+        S3ObjectMetadataInputConfig,
+    },
     serde::BrotliMsgpack,
     types::non_empty_string::ExpectedNonEmpty,
 };
@@ -34,23 +40,23 @@ fn test_clp_io_config_serialization() {
         },
         output: OutputConfig {
             compression_level: 3,
-            target_archive_size: 268_435_456,
-            target_dictionaries_size: 33_554_432,
-            target_encoded_file_size: 268_435_456,
-            target_segment_size: 268_435_456,
+            target_uncompressed_size: 268_435_456,
+            clp_s: ClpSOutputConfig {
+                target_encoded_size: 301_989_888,
+            },
         },
     };
 
     let brotli_compressed_msgpack = BrotliMsgpack::serialize(&config)
         .expect("Brotli-compressed MessagePack serialized config.");
 
-    let expected = "1bdc0100c4aa350b081365c242113820d5873cbb21498afe8d607454fea76eb23ebef2d88d496b8\
-        0fc651b33cde2657128e936efe894546b2a5dab7075ae18eece282fdd0b15f15380066703935c861712976d955d\
-        2c20b16e7d2ad8d7d79cd2dbeda70b37b6ba0096d677b68cb4e3eb94ed932f912fca8622656427c82c89dda99ef\
-        2d6fc2978e4fcbc883382c8b14d982917815e6d26bc9539493b1e334587e468750fa642d47753b92f552ab55e0f\
-        9dda04adea33aa1ba81d3cf76a956ead0fd5fcc9f45ef2ffc3f760f9124c25fe716e03a642a797d2945476c7546\
-        2e9e1de37160ae15ecfe28e7b60a7cadf4575c4dbd78f4b6c24e809642ed5ff542c16fb5a5cd1495253250d3841\
-        af440db6c9ca9e39a66d0034cfb2efd6083a204eb64a02";
+    let expected = "1bac0100e46abf3d120a43e97848264d2ced53df3bacf1885e82d9176b36fd4fdde407d5b59bb4\
+        06c8977579a6591c4d0e25dd666f740a336d2a5d56ecef80f17cdbf232bc60067e0a50d0b3819a5ce67b8ef\
+        2ba48f6634af4654f09faed8962ccdd692c7dd6c53170a9bfa3e5c50c5bc6449d7cf16c9657042ece1b4e7c8\
+        2e42a5ac25bf387403de3e7851d22b094db8ca87c1228df99f8c2f7246d5844650d9413ff46a604abefaa70c\
+        be6f3c56613eac53e540bcfacae00b6f3dc2ce61bc51640cb27d57ac9ff0fdb02cde64015821fe7f64015707\
+        3909628922b1191c4a6bb151634e14eabba528bec5cf8db67473afbfab86404d4e26d337ca7a200a84ec4ff48\
+        2010d8f18633d2e92b905c801803a2f659113a8c8227c3";
 
     assert_eq!(expected, hex::encode(brotli_compressed_msgpack));
 
@@ -78,10 +84,10 @@ fn test_clp_io_config_serialization() {
         "unstructured": false
       },
       "output": {
-        "target_archive_size": 268_435_456,
-        "target_dictionaries_size": 33_554_432,
-        "target_encoded_file_size": 268_435_456,
-        "target_segment_size": 268_435_456,
+        "target_uncompressed_size": 268_435_456,
+        "clp_s": {
+          "target_encoded_size": 301_989_888
+        },
         "compression_level": 3
       }
     });

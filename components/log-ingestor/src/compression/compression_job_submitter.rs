@@ -8,6 +8,7 @@ use clp_rust_utils::{
     },
     job_config::{
         ClpIoConfig,
+        ClpSOutputConfig,
         CompressionJobId,
         CompressionJobStatus,
         InputConfig,
@@ -85,10 +86,10 @@ impl CompressionJobSubmitter {
             unstructured: ingestion_job_config.unstructured,
         };
         let output_config = OutputConfig {
-            target_archive_size: archive_output_config.target_archive_size,
-            target_dictionaries_size: archive_output_config.target_dictionaries_size,
-            target_encoded_file_size: archive_output_config.target_encoded_file_size,
-            target_segment_size: archive_output_config.target_segment_size,
+            target_uncompressed_size: archive_output_config.target_uncompressed_size,
+            clp_s: ClpSOutputConfig {
+                target_encoded_size: archive_output_config.clp_s.target_encoded_size,
+            },
             compression_level: archive_output_config.compression_level,
         };
         let io_config_template = ClpIoConfig {

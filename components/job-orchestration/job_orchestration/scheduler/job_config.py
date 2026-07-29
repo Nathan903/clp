@@ -1,10 +1,17 @@
 from __future__ import annotations
 
 from enum import auto
-from typing import Literal
+from typing import Any, Literal
 
-from clp_py_utils.clp_config import S3Config
-from pydantic import BaseModel, field_validator
+from clp_py_utils.clp_config import (
+    ClpArchiveOutput,
+    ClpSArchiveOutput,
+    PositiveInt,
+    S3Config,
+    ZstdCompressionLevel,
+    normalize_archive_output_config,
+)
+from pydantic import BaseModel, field_validator, model_validator
 from strenum import LowercaseStrEnum
 
 
@@ -64,11 +71,21 @@ class S3ObjectMetadataInputConfig(S3Config):
 
 
 class OutputConfig(BaseModel):
-    target_archive_size: int
-    target_dictionaries_size: int
-    target_segment_size: int
-    target_encoded_file_size: int
-    compression_level: int
+    target_uncompressed_size: PositiveInt
+    clp: ClpArchiveOutput | None = None
+    clp_s: ClpSArchiveOutput | None = None
+    compression_level: ZstdCompressionLevel
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_legacy_fields(cls, value: Any) -> Any:
+        return normalize_archive_output_config(value)
+
+    @model_validator(mode="after")
+    def validate_engine_config(self):
+        if self.clp is None and self.clp_s is None:
+            raise ValueError("At least one engine-specific output configuration is required.")
+        return self
 
 
 class ClpIoConfig(BaseModel):

@@ -58,9 +58,13 @@ pub struct S3ObjectMetadataInputConfig {
 /// Represents CLP output config.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct OutputConfig {
-    pub target_archive_size: u64,
-    pub target_dictionaries_size: u64,
-    pub target_encoded_file_size: u64,
-    pub target_segment_size: u64,
+    pub target_uncompressed_size: u64,
+    pub clp_s: ClpSOutputConfig,
     pub compression_level: u8,
+}
+
+/// Represents CLP-S-specific output config.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ClpSOutputConfig {
+    pub target_encoded_size: u64,
 }

@@ -377,7 +377,8 @@ def main(argv):
         logger.exception("Failed to process input.")
         return -1
 
-    clp_output_config = OutputConfig.model_validate(clp_config.archive_output.model_dump())
+    archive_output = clp_config.archive_output
+    clp_output_config = OutputConfig.model_validate(archive_output.model_dump())
     clp_io_config = ClpIoConfig(input=clp_input_config, output=clp_output_config)
 
     mysql_adapter = SqlAdapter(clp_config.database)

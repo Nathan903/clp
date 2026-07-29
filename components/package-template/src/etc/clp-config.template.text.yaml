@@ -127,19 +127,26 @@ log_ingestor: null
 #  # Retention period for archives, in minutes. Set to null to disable automatic deletion.
 #  retention_period: null
 #
-#  # How much data CLP should try to compress into each archive
-#  target_archive_size: 268435456  # 256 MiB
+#  # Approximate uncompressed input size assigned to each compression task
+#  target_uncompressed_size: 268435456  # 256 MiB
 #
-#  # How large the dictionaries should be allowed to get before the archive is
-#  # closed and a new one is created
-#  target_dictionaries_size: 33554432  # 32 MiB
+#  # CLP-specific archive writer settings
+#  clp:
+#    # How large the dictionaries should be allowed to get before the archive is
+#    # closed and a new one is created
+#    target_dictionaries_size: 33554432  # 32 MiB
 #
-#  # How large each encoded file should be before being split into a new encoded
-#  # file
-#  target_encoded_file_size: 268435456  # 256 MiB
+#    # How large each encoded file should be before being split into a new encoded
+#    # file
+#    target_encoded_file_size: 268435456  # 256 MiB
 #
-#  # How much data CLP should try to fit into each segment within an archive
-#  target_segment_size: 268435456  # 256 MiB
+#    # How much data CLP should try to fit into each segment within an archive
+#    target_segment_size: 268435456  # 256 MiB
+#
+#  # CLP-S-specific archive writer settings
+#  clp_s:
+#    # Target encoded size for each archive
+#    target_encoded_size: 301989888  # 288 MiB
 #
 #  # How much archives should be compressed: 1 (fast/low compression) to 19 (slow/high compression)
 #  compression_level: 3

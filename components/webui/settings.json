@@ -41,10 +41,11 @@
         "StreamTargetUncompressedSize": 134217728,
 
         "ArchiveOutputCompressionLevel": 3,
-        "ArchiveOutputTargetArchiveSize": 268435456,
-        "ArchiveOutputTargetDictionariesSize": 33554432,
-        "ArchiveOutputTargetEncodedFileSize": 268435456,
-        "ArchiveOutputTargetSegmentSize": 268435456,
+        "ArchiveOutputTargetUncompressedSize": 268435456,
+        "ArchiveOutputClpTargetDictionariesSize": 33554432,
+        "ArchiveOutputClpTargetEncodedFileSize": 268435456,
+        "ArchiveOutputClpTargetSegmentSize": 268435456,
+        "ArchiveOutputClpSTargetEncodedSize": 301989888,
 
         "PrestoHost": "localhost",
         "PrestoPort": 8889

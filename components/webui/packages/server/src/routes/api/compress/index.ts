@@ -32,11 +32,18 @@ const DEFAULT_COMPRESSION_JOB_CONFIG: ClpIoConfig = Object.freeze({
         unstructured: true,
     },
     output: {
+        clp: {
+            target_dictionaries_size:
+                serverSettings.ArchiveOutputClpTargetDictionariesSize,
+            target_encoded_file_size:
+                serverSettings.ArchiveOutputClpTargetEncodedFileSize,
+            target_segment_size: serverSettings.ArchiveOutputClpTargetSegmentSize,
+        },
+        clp_s: {
+            target_encoded_size: serverSettings.ArchiveOutputClpSTargetEncodedSize,
+        },
         compression_level: serverSettings.ArchiveOutputCompressionLevel,
-        target_archive_size: serverSettings.ArchiveOutputTargetArchiveSize,
-        target_dictionaries_size: serverSettings.ArchiveOutputTargetDictionariesSize,
-        target_encoded_file_size: serverSettings.ArchiveOutputTargetEncodedFileSize,
-        target_segment_size: serverSettings.ArchiveOutputTargetSegmentSize,
+        target_uncompressed_size: serverSettings.ArchiveOutputTargetUncompressedSize,
     },
 });
 

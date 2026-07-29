@@ -15,6 +15,7 @@ from pydantic import (
     PlainSerializer,
     PrivateAttr,
     StringConstraints,
+    TypeAdapter,
 )
 from strenum import KebabCaseStrEnum, LowercaseStrEnum
 
@@ -100,6 +101,8 @@ DomainStr = NonEmptyStr
 Port = Annotated[int, Field(gt=0, lt=2**16)]
 SerializablePath = Annotated[pathlib.Path, PlainSerializer(serialize_path)]
 ZstdCompressionLevel = Annotated[int, Field(ge=1, le=19)]
+
+_POSITIVE_INT_ADAPTER = TypeAdapter(PositiveInt)
 
 LoggingLevelRust = Literal[
     "ERROR",
@@ -702,14 +705,74 @@ def _set_directory_for_storage_config(storage_config: FsStorage | S3Storage, dir
         raise NotImplementedError(f"storage.type {storage_type} is not supported")
 
 
-class ArchiveOutput(BaseModel):
-    storage: ArchiveFsStorage | ArchiveS3Storage = ArchiveFsStorage()
-    target_archive_size: PositiveInt = 256 * 1024 * 1024  # 256 MiB
+class ClpArchiveOutput(BaseModel):
     target_dictionaries_size: PositiveInt = 32 * 1024 * 1024  # 32 MiB
     target_encoded_file_size: PositiveInt = 256 * 1024 * 1024  # 256 MiB
     target_segment_size: PositiveInt = 256 * 1024 * 1024  # 256 MiB
+
+
+class ClpSArchiveOutput(BaseModel):
+    target_encoded_size: PositiveInt = 288 * 1024 * 1024  # 288 MiB
+
+
+_LEGACY_ARCHIVE_OUTPUT_FIELDS = {
+    "target_archive_size",
+    "target_dictionaries_size",
+    "target_encoded_file_size",
+    "target_segment_size",
+}
+_CANONICAL_ARCHIVE_OUTPUT_FIELDS = {"target_uncompressed_size", "clp", "clp_s"}
+
+
+def normalize_archive_output_config(value: Any) -> Any:
+    if not isinstance(value, dict):
+        return value
+
+    legacy_fields = _LEGACY_ARCHIVE_OUTPUT_FIELDS.intersection(value)
+    canonical_fields = _CANONICAL_ARCHIVE_OUTPUT_FIELDS.intersection(value)
+    if legacy_fields and canonical_fields:
+        raise ValueError("Legacy and canonical archive output fields cannot be mixed.")
+    if not legacy_fields:
+        return value
+
+    normalized = value.copy()
+    target_uncompressed_size = _POSITIVE_INT_ADAPTER.validate_python(
+        normalized.pop(
+            "target_archive_size",
+            ArchiveOutput.model_fields["target_uncompressed_size"].default,
+        )
+    )
+    clp = ClpArchiveOutput.model_validate(
+        {
+            field_name: normalized.pop(field_name)
+            for field_name in _LEGACY_ARCHIVE_OUTPUT_FIELDS - {"target_archive_size"}
+            if field_name in normalized
+        }
+    )
+    normalized.update(
+        {
+            "target_uncompressed_size": target_uncompressed_size,
+            "clp": clp.model_dump(),
+            "clp_s": {
+                "target_encoded_size": (clp.target_dictionaries_size + clp.target_segment_size),
+            },
+        }
+    )
+    return normalized
+
+
+class ArchiveOutput(BaseModel):
+    storage: ArchiveFsStorage | ArchiveS3Storage = ArchiveFsStorage()
+    target_uncompressed_size: PositiveInt = 256 * 1024 * 1024  # 256 MiB
+    clp: ClpArchiveOutput = ClpArchiveOutput()
+    clp_s: ClpSArchiveOutput = ClpSArchiveOutput()
     compression_level: ZstdCompressionLevel = 3
     retention_period: PositiveInt | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_legacy_fields(cls, value: Any) -> Any:
+        return normalize_archive_output_config(value)
 
     def set_directory(self, directory: pathlib.Path):
         _set_directory_for_storage_config(self.storage, directory)
