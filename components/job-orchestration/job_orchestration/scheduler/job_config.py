@@ -64,7 +64,8 @@ class S3ObjectMetadataInputConfig(S3Config):
 
 
 class OutputConfig(BaseModel):
-    target_archive_size: int
+    target_input_partition_size: int
+    target_encoded_size: int
     target_dictionaries_size: int
     target_segment_size: int
     target_encoded_file_size: int

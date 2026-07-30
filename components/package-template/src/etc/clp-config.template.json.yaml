@@ -137,7 +137,8 @@ telemetry:
 #  retention_period: null
 #
 #  # How much data CLP should try to compress into each archive
-#  target_archive_size: 268435456  # 256 MiB
+#  target_input_partition_size: 268435456  # 256 MiB
+#  target_encoded_size: 301989888  # 288 MiB
 #
 #  # How large the dictionaries should be allowed to get before the archive is
 #  # closed and a new one is created

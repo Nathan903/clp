@@ -41,7 +41,8 @@
         "StreamTargetUncompressedSize": 134217728,
 
         "ArchiveOutputCompressionLevel": 3,
-        "ArchiveOutputTargetArchiveSize": 268435456,
+        "ArchiveOutputTargetInputPartitionSize": 268435456,
+        "ArchiveOutputTargetEncodedSize": 301989888,
         "ArchiveOutputTargetDictionariesSize": 33554432,
         "ArchiveOutputTargetEncodedFileSize": 268435456,
         "ArchiveOutputTargetSegmentSize": 268435456,

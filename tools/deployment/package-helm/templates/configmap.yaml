@@ -60,7 +60,8 @@ data:
       {{- else }}
       retention_period: null
       {{- end }}
-      target_archive_size: {{ .Values.clpConfig.archive_output.target_archive_size | int }}
+      target_input_partition_size: {{ .Values.clpConfig.archive_output.target_input_partition_size | int }}
+      target_encoded_size: {{ .Values.clpConfig.archive_output.target_encoded_size | int }}
       target_dictionaries_size: {{ .Values.clpConfig.archive_output.target_dictionaries_size
         | int }}
       target_encoded_file_size: {{ .Values.clpConfig.archive_output.target_encoded_file_size
@@ -344,8 +345,10 @@ data:
 
         "ArchiveOutputCompressionLevel":
           {{ .Values.clpConfig.archive_output.compression_level | int }},
-        "ArchiveOutputTargetArchiveSize":
-          {{ .Values.clpConfig.archive_output.target_archive_size | int }},
+        "ArchiveOutputTargetInputPartitionSize":
+          {{ .Values.clpConfig.archive_output.target_input_partition_size | int }},
+        "ArchiveOutputTargetEncodedSize":
+          {{ .Values.clpConfig.archive_output.target_encoded_size | int }},
         "ArchiveOutputTargetDictionariesSize":
           {{ .Values.clpConfig.archive_output.target_dictionaries_size | int }},
         "ArchiveOutputTargetEncodedFileSize":

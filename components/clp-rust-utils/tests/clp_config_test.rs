@@ -37,7 +37,8 @@ fn test_clp_io_config_serialization() {
         },
         output: OutputConfig {
             compression_level: 3,
-            target_archive_size: 268_435_456,
+            target_input_partition_size: 268_435_456,
+            target_encoded_size: 301_989_888,
             target_dictionaries_size: 33_554_432,
             target_encoded_file_size: 268_435_456,
             target_segment_size: 268_435_456,
@@ -81,7 +82,8 @@ fn test_clp_io_config_serialization() {
         "unstructured": false
       },
       "output": {
-        "target_archive_size": 268_435_456,
+        "target_input_partition_size": 268_435_456,
+        "target_encoded_size": 301_989_888,
         "target_dictionaries_size": 33_554_432,
         "target_encoded_file_size": 268_435_456,
         "target_segment_size": 268_435_456,
