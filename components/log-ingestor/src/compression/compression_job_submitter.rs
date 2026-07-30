@@ -83,7 +83,8 @@ impl CompressionJobSubmitter {
             unstructured: ingestion_job_config.unstructured,
         };
         let output_config = OutputConfig {
-            target_archive_size: archive_output_config.target_archive_size,
+            target_input_partition_size: archive_output_config.target_input_partition_size,
+            target_encoded_size: archive_output_config.target_encoded_size,
             target_dictionaries_size: archive_output_config.target_dictionaries_size,
             target_encoded_file_size: archive_output_config.target_encoded_file_size,
             target_segment_size: archive_output_config.target_segment_size,
