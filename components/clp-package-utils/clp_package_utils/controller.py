@@ -834,7 +834,10 @@ class BaseController(ABC):
             "StreamFilesS3Region": stream_files_s3_region,
             "StreamTargetUncompressedSize": self._clp_config.stream_output.target_uncompressed_size,
             "ArchiveOutputCompressionLevel": self._clp_config.archive_output.compression_level,
-            "ArchiveOutputTargetArchiveSize": self._clp_config.archive_output.target_archive_size,
+            "ArchiveOutputTargetInputPartitionSize": (
+                self._clp_config.archive_output.target_input_partition_size
+            ),
+            "ArchiveOutputTargetEncodedSize": self._clp_config.archive_output.target_encoded_size,
             "ArchiveOutputTargetDictionariesSize": (
                 self._clp_config.archive_output.target_dictionaries_size
             ),

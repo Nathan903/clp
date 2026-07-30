@@ -358,7 +358,8 @@ impl Default for LogIngestor {
 #[serde(default)]
 pub struct ArchiveOutput {
     pub storage: ArchiveOutputStorage,
-    pub target_archive_size: u64,
+    pub target_input_partition_size: u64,
+    pub target_encoded_size: u64,
     pub target_dictionaries_size: u64,
     pub target_encoded_file_size: u64,
     pub target_segment_size: u64,
@@ -389,7 +390,8 @@ impl Default for ArchiveOutput {
     fn default() -> Self {
         Self {
             storage: ArchiveOutputStorage::default(),
-            target_archive_size: 256 * 1024 * 1024,
+            target_input_partition_size: 256 * 1024 * 1024,
+            target_encoded_size: 288 * 1024 * 1024,
             target_dictionaries_size: 32 * 1024 * 1024,
             target_encoded_file_size: 256 * 1024 * 1024,
             target_segment_size: 256 * 1024 * 1024,

@@ -71,7 +71,8 @@ const WebuiServerSettingsSchema = Type.Object({
     StreamTargetUncompressedSize: Type.Integer({minimum: 1}),
 
     ArchiveOutputCompressionLevel: Type.Integer({minimum: 1, maximum: 19}),
-    ArchiveOutputTargetArchiveSize: Type.Integer({minimum: 1}),
+    ArchiveOutputTargetInputPartitionSize: Type.Integer({minimum: 1}),
+    ArchiveOutputTargetEncodedSize: Type.Integer({minimum: 1}),
     ArchiveOutputTargetDictionariesSize: Type.Integer({minimum: 1}),
     ArchiveOutputTargetEncodedFileSize: Type.Integer({minimum: 1}),
     ArchiveOutputTargetSegmentSize: Type.Integer({minimum: 1}),

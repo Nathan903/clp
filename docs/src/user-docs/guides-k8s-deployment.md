@@ -236,7 +236,7 @@ clpConfig:
 
   # Configure archive output
   archive_output:
-    target_archive_size: 536870912  # 512 MB
+    target_input_partition_size: 536870912  # 512 MB
     compression_level: 6
     retention_period: 43200  # (in minutes) 30 days
 

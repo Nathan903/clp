@@ -46,7 +46,7 @@ pub struct S3CompressionJobHandle<SubmitterType: S3CompressionJobSubmitter> {
     input_config: InputConfig,
     clp_s_compression_option: ClpSCompressionOption,
     dataset: Option<String>,
-    target_archive_size: u64,
+    target_input_partition_size: u64,
 
     spider_option: Arc<SpiderOption>,
 }
@@ -91,8 +91,7 @@ impl<SubmitterType: S3CompressionJobSubmitter> S3CompressionJobHandle<SubmitterT
 
         let output_config = clp_io_config.output;
         let clp_s_compression_option = ClpSCompressionOption {
-            target_encoded_size: output_config.target_segment_size
-                + output_config.target_dictionaries_size,
+            target_encoded_size: output_config.target_encoded_size,
             compression_level: output_config.compression_level,
             timestamp_key: s3_object_metadata_config
                 .timestamp_key
@@ -110,7 +109,7 @@ impl<SubmitterType: S3CompressionJobSubmitter> S3CompressionJobHandle<SubmitterT
             input_config,
             clp_s_compression_option,
             dataset,
-            target_archive_size: output_config.target_archive_size,
+            target_input_partition_size: output_config.target_input_partition_size,
             spider_option,
         })
     }
@@ -296,7 +295,7 @@ impl<SubmitterType: S3CompressionJobSubmitter> S3CompressionJobHandle<SubmitterT
 
         let mut input_builder = CompressionInputBuilder::from_s3_config(
             config.s3_config.clone(),
-            self.target_archive_size,
+            self.target_input_partition_size,
         );
         for chunk in sorted_metadata_ids.chunks(FETCH_CHUNK_SIZE) {
             let mut query_builder = sqlx::QueryBuilder::<sqlx::MySql>::new(format!(

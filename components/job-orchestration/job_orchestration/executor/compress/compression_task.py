@@ -292,7 +292,7 @@ def _make_clp_s_command_and_env(
         "c", str(archive_output_dir),
         "--print-archive-stats",
         "--target-encoded-size",
-        str(clp_config.output.target_segment_size + clp_config.output.target_dictionaries_size),
+        str(clp_config.output.target_encoded_size),
         "--compression-level", str(clp_config.output.compression_level),
     ]
     # fmt: on
