@@ -19,7 +19,7 @@ pub struct CompressionInputBuilder {
     buffer: Vec<FileMetadata>,
     partitioned_task_inputs: Vec<S3InputSource>,
     total_buffered_size: u64,
-    target_archive_size: u64,
+    target_input_partition_size: u64,
     buffer_size_to_trigger_partition: u64,
     s3_config: S3Config,
 }
@@ -32,28 +32,31 @@ impl CompressionInputBuilder {
     /// A newly created [`CompressionInputBuilder`] with an empty buffer.
     #[must_use]
     pub fn new(clp_io_config: &ClpIoConfig) -> Self {
-        let target_archive_size = clp_io_config.output.target_archive_size;
+        let target_input_partition_size = clp_io_config.output.target_input_partition_size;
         let s3_config = match &clp_io_config.input {
             InputConfig::S3InputConfig { config } => config.s3_config.clone(),
             InputConfig::S3ObjectMetadataInputConfig { config } => config.s3_config.clone(),
         };
 
-        Self::from_s3_config(s3_config, target_archive_size)
+        Self::from_s3_config(s3_config, target_input_partition_size)
     }
 
-    /// Creates an empty builder from the S3 input settings and target archive size.
+    /// Creates an empty builder from the S3 input settings and target input partition size.
     ///
     /// # Returns
     ///
     /// A newly created [`CompressionInputBuilder`] with an empty buffer.
     #[must_use]
-    pub(crate) const fn from_s3_config(s3_config: S3Config, target_archive_size: u64) -> Self {
+    pub(crate) const fn from_s3_config(
+        s3_config: S3Config,
+        target_input_partition_size: u64,
+    ) -> Self {
         Self {
             buffer: Vec::new(),
             partitioned_task_inputs: Vec::new(),
             total_buffered_size: 0,
-            target_archive_size,
-            buffer_size_to_trigger_partition: target_archive_size * 2,
+            target_input_partition_size,
+            buffer_size_to_trigger_partition: target_input_partition_size * 2,
             s3_config,
         }
     }
@@ -136,7 +139,7 @@ impl CompressionInputBuilder {
     /// When `flush_buffer` is false, objects that cannot fill another target-sized partition
     /// remain buffered. Otherwise, the final partial partition is also emitted.
     fn partition(&mut self, flush_buffer: bool) {
-        if !flush_buffer && self.total_buffered_size < self.target_archive_size {
+        if !flush_buffer && self.total_buffered_size < self.target_input_partition_size {
             return;
         }
         if self.buffer.is_empty() {
@@ -145,11 +148,13 @@ impl CompressionInputBuilder {
 
         let mut rr_iterator = RoundRobinIterator::new(std::mem::take(&mut self.buffer));
 
-        'partitioning: while flush_buffer || self.total_buffered_size >= self.target_archive_size {
+        'partitioning: while flush_buffer
+            || self.total_buffered_size >= self.target_input_partition_size
+        {
             let mut partition = Vec::new();
             let mut partition_size = 0;
 
-            while partition_size < self.target_archive_size {
+            while partition_size < self.target_input_partition_size {
                 let Some(file) = rr_iterator.next() else {
                     self.push_input_source(partition);
                     break 'partitioning;
@@ -315,7 +320,7 @@ mod tests {
         NonEmptyString::try_from(value).expect("test string literals are non-empty")
     }
 
-    fn create_builder(target_archive_size: u64) -> CompressionInputBuilder {
+    fn create_builder(target_input_partition_size: u64) -> CompressionInputBuilder {
         let s3_config = S3Config {
             bucket: create_non_empty_string(TEST_BUCKET),
             region_code: None,
@@ -334,7 +339,8 @@ mod tests {
                 },
             },
             output: OutputConfig {
-                target_archive_size,
+                target_input_partition_size,
+                target_encoded_size: 288 * 1024 * 1024,
                 target_dictionaries_size: 1024,
                 target_encoded_file_size: 1024,
                 target_segment_size: 1024,
@@ -364,7 +370,7 @@ mod tests {
     fn assert_partition_invariants(
         input_sources: &[S3InputSource],
         key_to_size: &BTreeMap<String, u64>,
-        target_archive_size: u64,
+        target_input_partition_size: u64,
     ) {
         let mut key_counts: BTreeMap<&str, usize> = BTreeMap::new();
         for key in input_sources.iter().flat_map(|source| &source.object_keys) {
@@ -389,7 +395,7 @@ mod tests {
 
             // Files are appended only while the partition is still under the target, so removing
             // the last-appended file must drop the partition back below the target.
-            assert!(total_size - last_size < target_archive_size);
+            assert!(total_size - last_size < target_input_partition_size);
         }
     }
 

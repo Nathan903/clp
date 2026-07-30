@@ -31,8 +31,10 @@ class PathsToCompressBuffer:
         else:
             self.__empty_directories: list[str] | None = None
         self.__total_file_size: int = 0
-        self.__target_archive_size: int = clp_io_config.output.target_archive_size
-        self.__file_size_to_trigger_compression: int = clp_io_config.output.target_archive_size * 2
+        self.__target_input_partition_size: int = clp_io_config.output.target_input_partition_size
+        self.__file_size_to_trigger_compression: int = (
+            clp_io_config.output.target_input_partition_size * 2
+        )
 
         self.num_tasks = 0
         self.__task_arguments = {
@@ -97,7 +99,7 @@ class PathsToCompressBuffer:
 
         return partition_total_file_size
 
-    def add_files(self, target_num_archives: int, target_archive_size: int, files):
+    def add_files(self, target_num_archives: int, target_input_partition_size: int, files):
         target_num_archives = min(len(files), target_num_archives)
 
         groups = group_files_by_similar_filenames(files)
@@ -119,7 +121,7 @@ class PathsToCompressBuffer:
             while True:
                 partition = partitions[next_partition_ix]
                 next_partition_ix = (next_partition_ix + 1) % target_num_archives
-                if partition.get_total_file_size() < target_archive_size:
+                if partition.get_total_file_size() < target_input_partition_size:
                     break
 
             partition.add_file(file, group_id)
@@ -139,7 +141,7 @@ class PathsToCompressBuffer:
             self.__submit_partition_for_compression(partition)
 
     def __partition_and_compress(self, flush_buffer: bool):
-        if not flush_buffer and self.__total_file_size < self.__target_archive_size:
+        if not flush_buffer and self.__total_file_size < self.__target_input_partition_size:
             # Not enough data for a full partition and we don't need to exhaust the buffer
             return
         if not self.contains_paths():
@@ -154,16 +156,16 @@ class PathsToCompressBuffer:
 
             group_ix = 0
             # Compress full partitions
-            if self.__total_file_size >= self.__target_archive_size:
+            if self.__total_file_size >= self.__target_input_partition_size:
                 file_ix = 0
                 for file_ix, file in enumerate(self.__files):
                     partition.add_file(file, group_ix)
                     group_ix += 1
 
                     # Compress partition if ready
-                    if partition.get_total_file_size() >= self.__target_archive_size:
+                    if partition.get_total_file_size() >= self.__target_input_partition_size:
                         self.__total_file_size -= self.__submit_partition_for_compression(partition)
-                        if self.__total_file_size < self.__target_archive_size:
+                        if self.__total_file_size < self.__target_input_partition_size:
                             # Not enough files to fill a partition, so break
                             break
                 # Pop compressed files
@@ -201,9 +203,12 @@ class PathsToCompressBuffer:
                     group_ix %= len(groups)
 
                 # Compress partition if ready
-                if partition.get_total_file_size() >= self.__target_archive_size:
+                if partition.get_total_file_size() >= self.__target_input_partition_size:
                     self.__total_file_size -= self.__submit_partition_for_compression(partition)
-                    if not flush_buffer and self.__total_file_size < self.__target_archive_size:
+                    if (
+                        not flush_buffer
+                        and self.__total_file_size < self.__target_input_partition_size
+                    ):
                         # Not enough files to fill a partition and
                         # we don't need to exhaust the buffer, so break
                         break

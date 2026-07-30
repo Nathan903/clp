@@ -128,7 +128,8 @@ const ClpIoS3ObjectMetadataInputConfigSchema = Type.Object({
  */
 const ClpIoOutputConfigSchema = Type.Object({
     compression_level: Type.Number(),
-    target_archive_size: Type.Number(),
+    target_input_partition_size: Type.Number(),
+    target_encoded_size: Type.Number(),
     target_dictionaries_size: Type.Number(),
     target_encoded_file_size: Type.Number(),
     target_segment_size: Type.Number(),

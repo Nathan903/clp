@@ -302,8 +302,11 @@ clpConfig:
     # Retention period for archives, in minutes. Set to null to disable automatic deletion.
     retention_period: null
 
-    # How much data CLP should try to compress into each archive
-    target_archive_size: 268435456  # 256 MB
+    # How much input data CLP should try to compress into each archive
+    target_input_partition_size: 268435456  # 256 MB
+
+    # Target size of the encoded output (segment + dictionaries)
+    target_encoded_size: 301989888  # 288 MB
 
     # How large the dictionaries should be allowed to get before the archive is
     # closed and a new one is created
