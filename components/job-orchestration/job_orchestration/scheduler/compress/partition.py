@@ -32,7 +32,9 @@ class PathsToCompressBuffer:
             self.__empty_directories: list[str] | None = None
         self.__total_file_size: int = 0
         self.__target_input_partition_size: int = clp_io_config.output.target_input_partition_size
-        self.__file_size_to_trigger_compression: int = clp_io_config.output.target_input_partition_size * 2
+        self.__file_size_to_trigger_compression: int = (
+            clp_io_config.output.target_input_partition_size * 2
+        )
 
         self.num_tasks = 0
         self.__task_arguments = {
@@ -203,7 +205,10 @@ class PathsToCompressBuffer:
                 # Compress partition if ready
                 if partition.get_total_file_size() >= self.__target_input_partition_size:
                     self.__total_file_size -= self.__submit_partition_for_compression(partition)
-                    if not flush_buffer and self.__total_file_size < self.__target_input_partition_size:
+                    if (
+                        not flush_buffer
+                        and self.__total_file_size < self.__target_input_partition_size
+                    ):
                         # Not enough files to fill a partition and
                         # we don't need to exhaust the buffer, so break
                         break

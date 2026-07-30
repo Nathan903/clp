@@ -47,7 +47,10 @@ impl CompressionInputBuilder {
     ///
     /// A newly created [`CompressionInputBuilder`] with an empty buffer.
     #[must_use]
-    pub(crate) const fn from_s3_config(s3_config: S3Config, target_input_partition_size: u64) -> Self {
+    pub(crate) const fn from_s3_config(
+        s3_config: S3Config,
+        target_input_partition_size: u64,
+    ) -> Self {
         Self {
             buffer: Vec::new(),
             partitioned_task_inputs: Vec::new(),
@@ -145,7 +148,9 @@ impl CompressionInputBuilder {
 
         let mut rr_iterator = RoundRobinIterator::new(std::mem::take(&mut self.buffer));
 
-        'partitioning: while flush_buffer || self.total_buffered_size >= self.target_input_partition_size {
+        'partitioning: while flush_buffer
+            || self.total_buffered_size >= self.target_input_partition_size
+        {
             let mut partition = Vec::new();
             let mut partition_size = 0;
 
