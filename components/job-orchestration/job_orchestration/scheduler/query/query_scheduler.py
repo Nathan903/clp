@@ -77,6 +77,8 @@ from job_orchestration.scheduler.scheduler_data import (
     ExtractIrJob,
     ExtractJsonJob,
     InternalJobState,
+    QUERY_TASK_COMPRESSED_SIZE_HEADER,
+    QUERY_TASK_UNCOMPRESSED_SIZE_HEADER,
     QueryJob,
     QueryTaskResult,
     SearchJob,
@@ -176,6 +178,22 @@ tasks_failed_counter = meter.create_counter(
     unit="{task}",
     description="Number of failed query tasks",
 )
+uncompressed_bytes_scanned_counter = meter.create_counter(
+    "clp.query.uncompressed_bytes_scanned_total",
+    unit="By",
+    description=(
+        "Total uncompressed size of archives whose search tasks completed successfully; this is a"
+        " logical archive-size measurement, not physical bytes read"
+    ),
+)
+compressed_bytes_scanned_counter = meter.create_counter(
+    "clp.query.compressed_bytes_scanned_total",
+    unit="By",
+    description=(
+        "Total compressed size of archives whose search tasks completed successfully; this is a"
+        " logical archive-size measurement, not physical bytes read"
+    ),
+)
 job_duration_histogram = meter.create_histogram(
     "clp.query.job.duration",
     unit="s",
@@ -186,6 +204,26 @@ task_duration_histogram = meter.create_histogram(
     unit="s",
     description="Duration of query tasks",
 )
+
+
+def _record_search_bytes_scanned(task_result: QueryTaskResult) -> None:
+    uncompressed_size = task_result.uncompressed_size
+    compressed_size = task_result.compressed_size
+    if uncompressed_size is None or compressed_size is None:
+        logger.error(
+            "Search task result is missing archive-size metadata; scan byte metrics were not"
+            " emitted."
+        )
+        return
+    if uncompressed_size < 0 or compressed_size < 0:
+        logger.error(
+            "Search task result contains negative archive-size metadata; scan byte metrics were not"
+            " emitted."
+        )
+        return
+
+    uncompressed_bytes_scanned_counter.add(uncompressed_size)
+    compressed_bytes_scanned_counter.add(compressed_size)
 
 
 class DispatchExecutor:
@@ -228,6 +266,11 @@ class DispatchExecutor:
                 dataset=archives[i].get("dataset"),
                 clp_metadata_db_conn_params=DispatchExecutor._clp_metadata_db_conn_params,
                 results_cache_uri=DispatchExecutor._results_cache_uri,
+            ).set(
+                headers={
+                    QUERY_TASK_UNCOMPRESSED_SIZE_HEADER: archives[i]["uncompressed_size"],
+                    QUERY_TASK_COMPRESSED_SIZE_HEADER: archives[i]["compressed_size"],
+                }
             )
             for i in range(len(archives))
         )
@@ -571,7 +614,11 @@ def _get_archives_for_search_without_datasets(
         where_clause = " WHERE " + " AND ".join(filter_clauses)
 
     table = get_archives_table_name(table_prefix, None)
-    query = f"SELECT id AS archive_id, end_timestamp FROM {table}{where_clause}"
+    query = (
+        "SELECT id AS archive_id, end_timestamp, "  # noqa: S608
+        "uncompressed_size, size AS compressed_size "
+        f"FROM {table}{where_clause}"
+    )
     query += " ORDER BY end_timestamp DESC"
 
     with contextlib.closing(db_conn.cursor(dictionary=True)) as cursor:
@@ -604,7 +651,9 @@ def get_archives_for_search(
     for ds in datasets:
         table = get_archives_table_name(table_prefix, ds)
         union_parts.append(
-            f"SELECT id AS archive_id, end_timestamp, '{ds}' AS dataset FROM {table}{where_clause}"
+            "SELECT id AS archive_id, end_timestamp, "  # noqa: S608
+            "uncompressed_size, "
+            f"size AS compressed_size, '{ds}' AS dataset FROM {table}{where_clause}"
         )
     query = " UNION ALL ".join(union_parts) + " ORDER BY end_timestamp DESC"
 
@@ -701,6 +750,11 @@ def get_task_group_for_job(
                 dataset=archives[i].get("dataset"),
                 clp_metadata_db_conn_params=clp_metadata_db_conn_params,
                 results_cache_uri=results_cache_uri,
+            ).set(
+                headers={
+                    QUERY_TASK_UNCOMPRESSED_SIZE_HEADER: archives[i]["uncompressed_size"],
+                    QUERY_TASK_COMPRESSED_SIZE_HEADER: archives[i]["compressed_size"],
+                }
             )
             for i in range(len(archives))
         )
@@ -994,6 +1048,7 @@ async def handle_finished_search_job(
                 logger.error("Search task failed.")
             else:
                 tasks_completed_counter.add(1)
+                _record_search_bytes_scanned(task_result)
                 job.num_archives_searched += 1
                 logger.info("Search task succeeded in %s second(s).", task_result.duration)
 
