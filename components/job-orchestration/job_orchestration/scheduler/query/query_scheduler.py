@@ -186,6 +186,16 @@ task_duration_histogram = meter.create_histogram(
     unit="s",
     description="Duration of query tasks",
 )
+uncompressed_bytes_scanned_counter = meter.create_counter(
+    "clp.query.uncompressed_bytes_scanned_total",
+    unit="By",
+    description="Total uncompressed bytes scanned during queries.",
+)
+compressed_bytes_scanned_counter = meter.create_counter(
+    "clp.query.compressed_bytes_scanned_total",
+    unit="By",
+    description="Total compressed bytes scanned during queries.",
+)
 
 
 class DispatchExecutor:
@@ -233,6 +243,14 @@ class DispatchExecutor:
         )
         group_result = celery_task_group.apply_async()
         group_result.save()
+        
+        uncompressed_bytes = sum(a.get("uncompressed_size", 0) for a in archives)
+        compressed_bytes = sum(a.get("size", 0) for a in archives)
+        if uncompressed_bytes > 0:
+            uncompressed_bytes_scanned_counter.add(uncompressed_bytes, {"job_id": job_id})
+        if compressed_bytes > 0:
+            compressed_bytes_scanned_counter.add(compressed_bytes, {"job_id": job_id})
+            
         return job_id, len(archives), group_result.id
 
 
@@ -571,7 +589,7 @@ def _get_archives_for_search_without_datasets(
         where_clause = " WHERE " + " AND ".join(filter_clauses)
 
     table = get_archives_table_name(table_prefix, None)
-    query = f"SELECT id AS archive_id, end_timestamp FROM {table}{where_clause}"
+    query = f"SELECT id AS archive_id, end_timestamp, size, uncompressed_size FROM {table}{where_clause}"
     query += " ORDER BY end_timestamp DESC"
 
     with contextlib.closing(db_conn.cursor(dictionary=True)) as cursor:
@@ -604,7 +622,7 @@ def get_archives_for_search(
     for ds in datasets:
         table = get_archives_table_name(table_prefix, ds)
         union_parts.append(
-            f"SELECT id AS archive_id, end_timestamp, '{ds}' AS dataset FROM {table}{where_clause}"
+            f"SELECT id AS archive_id, end_timestamp, '{ds}' AS dataset, size, uncompressed_size FROM {table}{where_clause}"
         )
     query = " UNION ALL ".join(union_parts) + " ORDER BY end_timestamp DESC"
 
@@ -742,6 +760,14 @@ def dispatch_query_job(
     )
     job.current_sub_job_async_task_result = task_group.apply_async()
     job.state = InternalJobState.RUNNING
+    
+    if isinstance(job, SearchJob):
+        uncompressed_bytes = sum(a.get("uncompressed_size", 0) for a in archives)
+        compressed_bytes = sum(a.get("size", 0) for a in archives)
+        if uncompressed_bytes > 0:
+            uncompressed_bytes_scanned_counter.add(uncompressed_bytes, {"job_id": job.id})
+        if compressed_bytes > 0:
+            compressed_bytes_scanned_counter.add(compressed_bytes, {"job_id": job.id})
 
 
 async def acquire_reducer_for_job(job: SearchJob):
