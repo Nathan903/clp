@@ -176,6 +176,16 @@ tasks_failed_counter = meter.create_counter(
     unit="{task}",
     description="Number of failed query tasks",
 )
+uncompressed_bytes_scanned_histogram = meter.create_histogram(
+    "clp.query.uncompressed_bytes_scanned",
+    unit="By",
+    description="Distribution of logical uncompressed archive bytes scanned per finished search job",
+)
+compressed_bytes_scanned_histogram = meter.create_histogram(
+    "clp.query.compressed_bytes_scanned",
+    unit="By",
+    description="Distribution of logical compressed archive bytes scanned per finished search job",
+)
 uncompressed_bytes_scanned_counter = meter.create_counter(
     "clp.query.uncompressed_bytes_scanned_total",
     unit="By",
@@ -205,6 +215,7 @@ task_duration_histogram = meter.create_histogram(
 
 
 def _record_search_bytes_scanned(
+    job: SearchJob,
     archive_sizes: tuple[int, int] | None,
 ) -> None:
     if archive_sizes is None:
@@ -223,6 +234,9 @@ def _record_search_bytes_scanned(
 
     uncompressed_bytes_scanned_counter.add(uncompressed_size)
     compressed_bytes_scanned_counter.add(compressed_size)
+
+    job.uncompressed_bytes_scanned += uncompressed_size
+    job.compressed_bytes_scanned += compressed_size
 
 
 class DispatchExecutor:
@@ -1051,7 +1065,7 @@ async def handle_finished_search_job(
                 logger.error("Search task failed.")
             else:
                 tasks_completed_counter.add(1)
-                _record_search_bytes_scanned(archive_sizes)
+                _record_search_bytes_scanned(job, archive_sizes)
                 job.num_archives_searched += 1
                 logger.info("Search task succeeded in %s second(s).", task_result.duration)
 
@@ -1109,6 +1123,8 @@ async def handle_finished_search_job(
         duration=duration,
     ):
         job_duration_histogram.record(duration)
+        uncompressed_bytes_scanned_histogram.record(job.uncompressed_bytes_scanned)
+        compressed_bytes_scanned_histogram.record(job.compressed_bytes_scanned)
         if new_job_status == QueryJobStatus.SUCCEEDED:
             logger.info("Completed job.")
         elif reducer_failed:

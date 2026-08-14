@@ -89,6 +89,8 @@ class SearchJob(QueryJob):
     remaining_archives_for_search: list[dict[str, Any]]
     # Maps task_id -> (uncompressed_size, compressed_size); populated at dispatch time.
     task_archive_sizes: dict[int, tuple[int, int]] = Field(default_factory=dict)
+    uncompressed_bytes_scanned: int = 0
+    compressed_bytes_scanned: int = 0
     reducer_acquisition_task: asyncio.Task | None = None
     reducer_handler_msg_queues: ReducerHandlerMessageQueues | None = None
 
