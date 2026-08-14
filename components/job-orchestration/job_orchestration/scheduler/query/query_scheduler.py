@@ -205,7 +205,6 @@ task_duration_histogram = meter.create_histogram(
 
 
 def _record_search_bytes_scanned(
-    task_id: int,
     archive_sizes: tuple[int, int] | None,
 ) -> None:
     if archive_sizes is None:
@@ -1052,7 +1051,7 @@ async def handle_finished_search_job(
                 logger.error("Search task failed.")
             else:
                 tasks_completed_counter.add(1)
-                _record_search_bytes_scanned(task_id, archive_sizes)
+                _record_search_bytes_scanned(archive_sizes)
                 job.num_archives_searched += 1
                 logger.info("Search task succeeded in %s second(s).", task_result.duration)
 
