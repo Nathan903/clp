@@ -20,17 +20,32 @@ The following OpenTelemetry metrics are emitted:
 
 Emitted by long-running CLP services to track throughput:
 
-| Component             | Metric                               | Type    | Description                                       |
-| --------------------- | ------------------------------------ | ------- | ------------------------------------------------- |
-| api-server            | `clp.service.event`                  | Counter | Service lifecycle events (e.g., startup)          |
-| compression-scheduler | `clp.compression.tasks.completed`    | Counter | Number of completed compression tasks             |
-| compression-scheduler | `clp.compression.tasks.failed`       | Counter | Number of failed compression tasks                |
-| compression-worker    | `clp.compression.bytes_input_total`  | Counter | Total uncompressed bytes processed by compression |
-| compression-worker    | `clp.compression.bytes_output_total` | Counter | Total compressed bytes output by compression      |
-| log-ingestor          | `clp.ingest.total_num_bytes`         | Counter | Total bytes ingested                              |
-| log-ingestor          | `clp.ingest.total_num_objects`       | Counter | Total objects (log events) ingested               |
-| query-scheduler       | `clp.query.tasks.completed`          | Counter | Number of completed query tasks                   |
-| query-scheduler       | `clp.query.tasks.failed`             | Counter | Number of failed query tasks                      |
+| Component             | Metric                                         | Type    | Description                                                        |
+| --------------------- | ---------------------------------------------- | ------- | ------------------------------------------------------------------ |
+| api-server            | `clp.service.event`                            | Counter | Service lifecycle events (e.g., startup)                           |
+| compression-scheduler | `clp.compression.tasks.completed`              | Counter | Number of completed compression tasks                              |
+| compression-scheduler | `clp.compression.tasks.failed`                 | Counter | Number of failed compression tasks                                 |
+| compression-worker    | `clp.compression.bytes_input_total`            | Counter | Total uncompressed bytes processed by compression                  |
+| compression-worker    | `clp.compression.bytes_output_total`           | Counter | Total compressed bytes output by compression                       |
+| log-ingestor          | `clp.ingest.total_num_bytes`                   | Counter | Total bytes ingested                                               |
+| log-ingestor          | `clp.ingest.total_num_objects`                 | Counter | Total objects (log events) ingested                                |
+| query-scheduler       | `clp.query.tasks.completed`                    | Counter | Number of completed query tasks                                    |
+| query-scheduler       | `clp.query.tasks.failed`                       | Counter | Number of failed query tasks                                       |
+| query-scheduler       | `clp.query.uncompressed_bytes_scanned_total`   | Counter | Total logical uncompressed bytes searched in successful tasks      |
+| query-scheduler       | `clp.query.compressed_bytes_scanned_total`     | Counter | Total logical compressed bytes searched in successful tasks        |
+
+The query byte counters and histograms use the `By` unit and sum each successfully searched archive's
+`uncompressed_size` and compressed `size` from the metadata database.
+
+* Counters: cumulative successful archive-task bytes across the deployment.
+* Histograms: one accumulated successful-task byte observation per normally finished search job.
+
+The query byte histograms use logarithmically spaced boundaries from 1 MiB through 4 TiB, with
+dedicated zero and overflow buckets.
+
+They represent logical archive sizes, not the physical bytes read from a local filesystem or S3, nor
+the exact bytes decompressed after query pruning. They carry no query-, task-, archive-, or
+dataset-specific attributes beyond the standard resource attributes listed below.
 
 #### Operational up-down counters
 
@@ -53,8 +68,10 @@ Emitted by long-running CLP services to track duration and rate distributions:
 | compression-scheduler | `clp.compression.task.duration` | Histogram | Duration of compression tasks                              |
 | compression-worker    | `clp.compression.input_rate`    | Histogram | Rate of uncompressed bytes processed per task              |
 | compression-worker    | `clp.compression.output_rate`   | Histogram | Rate of compressed bytes output per task                   |
-| query-scheduler       | `clp.query.job.duration`        | Histogram | Duration of query jobs                                     |
-| query-scheduler       | `clp.query.task.duration`       | Histogram | Duration of query tasks                                    |
+| query-scheduler       | `clp.query.job.duration`               | Histogram | Duration of query jobs                                                     |
+| query-scheduler       | `clp.query.task.duration`              | Histogram | Duration of query tasks                                                    |
+| query-scheduler       | `clp.query.uncompressed_bytes_scanned` | Histogram | Distribution of logical uncompressed bytes searched per finished query job |
+| query-scheduler       | `clp.query.compressed_bytes_scanned`   | Histogram | Distribution of logical compressed bytes searched per finished query job   |
 
 #### Deployment topology gauges
 
