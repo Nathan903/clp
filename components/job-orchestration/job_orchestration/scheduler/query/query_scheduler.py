@@ -204,15 +204,17 @@ task_duration_histogram = meter.create_histogram(
 )
 
 
-def _record_search_bytes_scanned(task_id: int, job: SearchJob) -> None:
-    sizes = job.task_archive_sizes.get(task_id)
-    if sizes is None:
+def _record_search_bytes_scanned(
+    task_id: int,
+    archive_sizes: tuple[int, int] | None,
+) -> None:
+    if archive_sizes is None:
         logger.error(
-            "Search task result is missing archive-size metadata; scan byte metrics were not"
-            " emitted."
+            "Archive-size metadata is missing for the completed search task; scan byte metrics "
+            "were not emitted."
         )
         return
-    uncompressed_size, compressed_size = sizes
+    uncompressed_size, compressed_size = archive_sizes
     if uncompressed_size < 0 or compressed_size < 0:
         logger.error(
             "Search task result contains negative archive-size metadata; scan byte metrics were not"
@@ -975,9 +977,7 @@ def handle_pending_query_jobs(
                 )
 
         for future in concurrent.futures.as_completed(futures):
-            job_id, num_archives_for_search, group_result_id, task_archive_sizes = (
-                future.result()
-            )
+            job_id, num_archives_for_search, group_result_id, task_archive_sizes = future.result()
             job = active_jobs[job_id]
             with bound_contextvars(**_get_query_job_log_context_from_job(job)):
                 job.task_archive_sizes.update(task_archive_sizes)
@@ -1045,13 +1045,14 @@ async def handle_finished_search_job(
 
         with bound_contextvars(task_id=task_id):
             task_duration_histogram.record(task_result.duration)
+            archive_sizes = job.task_archive_sizes.pop(task_id, None)
             if not task_status == QueryTaskStatus.SUCCEEDED:
                 tasks_failed_counter.add(1)
                 new_job_status = QueryJobStatus.FAILED
                 logger.error("Search task failed.")
             else:
                 tasks_completed_counter.add(1)
-                _record_search_bytes_scanned(task_id, job)
+                _record_search_bytes_scanned(task_id, archive_sizes)
                 job.num_archives_searched += 1
                 logger.info("Search task succeeded in %s second(s).", task_result.duration)
 
