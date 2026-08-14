@@ -179,12 +179,16 @@ tasks_failed_counter = meter.create_counter(
 uncompressed_bytes_scanned_histogram = meter.create_histogram(
     "clp.query.uncompressed_bytes_scanned",
     unit="By",
-    description="Distribution of logical uncompressed archive bytes scanned per finished search job",
+    description=(
+        "Distribution of logical uncompressed archive bytes scanned per finished search job"
+    ),
 )
 compressed_bytes_scanned_histogram = meter.create_histogram(
     "clp.query.compressed_bytes_scanned",
     unit="By",
-    description="Distribution of logical compressed archive bytes scanned per finished search job",
+    description=(
+        "Distribution of logical compressed archive bytes scanned per finished search job"
+    ),
 )
 uncompressed_bytes_scanned_counter = meter.create_counter(
     "clp.query.uncompressed_bytes_scanned_total",

@@ -40,6 +40,9 @@ The query byte counters and histograms use the `By` unit and sum each successful
 * Counters: cumulative successful archive-task bytes across the deployment.
 * Histograms: one accumulated successful-task byte observation per normally finished search job.
 
+The query byte histograms use logarithmically spaced boundaries from 1 MiB through 4 TiB, with
+dedicated zero and overflow buckets.
+
 They represent logical archive sizes, not the physical bytes read from a local filesystem or S3, nor
 the exact bytes decompressed after query pruning. They carry no query-, task-, archive-, or
 dataset-specific attributes beyond the standard resource attributes listed below.
