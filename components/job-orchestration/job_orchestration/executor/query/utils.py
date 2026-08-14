@@ -30,8 +30,6 @@ def report_task_failure(
     sql_adapter: SqlAdapter,
     task_id: int,
     start_time: datetime.datetime,
-    uncompressed_size: int | None = None,
-    compressed_size: int | None = None,
 ):
     task_status = QueryTaskStatus.FAILED
     update_query_task_metadata(
@@ -44,8 +42,6 @@ def report_task_failure(
         task_id=task_id,
         status=task_status,
         duration=0,
-        uncompressed_size=uncompressed_size,
-        compressed_size=compressed_size,
     ).model_dump()
 
 
@@ -59,8 +55,6 @@ def run_query_task(
     job_id: str,
     task_id: int,
     start_time: datetime.datetime,
-    uncompressed_size: int | None = None,
-    compressed_size: int | None = None,
 ) -> tuple[QueryTaskResult, str]:
     clo_log_path = get_task_log_file_path(clp_logs_dir, job_id, task_id)
     clo_log_file = open(clo_log_path, "w")
@@ -122,8 +116,6 @@ def run_query_task(
         status=task_status,
         task_id=task_id,
         duration=duration,
-        uncompressed_size=uncompressed_size,
-        compressed_size=compressed_size,
     )
 
     return task_result, stdout_data.decode("utf-8")

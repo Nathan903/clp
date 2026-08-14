@@ -20,9 +20,6 @@ from job_orchestration.scheduler.job_config import (
 )
 from job_orchestration.scheduler.query.reducer_handler import ReducerHandlerMessageQueues
 
-QUERY_TASK_UNCOMPRESSED_SIZE_HEADER = "clp_uncompressed_size"
-QUERY_TASK_COMPRESSED_SIZE_HEADER = "clp_compressed_size"
-
 
 class CompressionJob(BaseModel):
     # Allow the use of `TaskManager.ResultHandle`
@@ -90,6 +87,8 @@ class SearchJob(QueryJob):
     num_archives_to_search: int
     num_archives_searched: int
     remaining_archives_for_search: list[dict[str, Any]]
+    # Maps task_id -> (uncompressed_size, compressed_size); populated at dispatch time.
+    task_archive_sizes: dict[int, tuple[int, int]] = {}
     reducer_acquisition_task: asyncio.Task | None = None
     reducer_handler_msg_queues: ReducerHandlerMessageQueues | None = None
 
@@ -104,5 +103,3 @@ class QueryTaskResult(BaseModel):
     status: QueryTaskStatus
     task_id: int
     duration: float
-    uncompressed_size: int | None = None
-    compressed_size: int | None = None

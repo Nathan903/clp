@@ -77,8 +77,6 @@ from job_orchestration.scheduler.scheduler_data import (
     ExtractIrJob,
     ExtractJsonJob,
     InternalJobState,
-    QUERY_TASK_COMPRESSED_SIZE_HEADER,
-    QUERY_TASK_UNCOMPRESSED_SIZE_HEADER,
     QueryJob,
     QueryTaskResult,
     SearchJob,
@@ -206,15 +204,15 @@ task_duration_histogram = meter.create_histogram(
 )
 
 
-def _record_search_bytes_scanned(task_result: QueryTaskResult) -> None:
-    uncompressed_size = task_result.uncompressed_size
-    compressed_size = task_result.compressed_size
-    if uncompressed_size is None or compressed_size is None:
+def _record_search_bytes_scanned(task_id: int, job: SearchJob) -> None:
+    sizes = job.task_archive_sizes.get(task_id)
+    if sizes is None:
         logger.error(
             "Search task result is missing archive-size metadata; scan byte metrics were not"
             " emitted."
         )
         return
+    uncompressed_size, compressed_size = sizes
     if uncompressed_size < 0 or compressed_size < 0:
         logger.error(
             "Search task result contains negative archive-size metadata; scan byte metrics were not"
@@ -249,13 +247,18 @@ class DispatchExecutor:
     @staticmethod
     def dispatch_job_and_update_db(
         job_config_blob: bytes, job_type: QueryJobType, job_id: str, archives: list[dict]
-    ) -> tuple[str, int, str]:
+    ) -> tuple[str, int, str, dict[int, tuple[int, int]]]:
         if not QueryJobType.SEARCH_OR_AGGREGATION == job_type:
             raise NotImplementedError(f"Unexpected job type: {job_type}")
 
         archive_ids = [a["archive_id"] for a in archives]
         with contextlib.closing(DispatchExecutor._db_conn_pool.connect()) as db_conn:
             task_ids = insert_query_tasks_into_db(db_conn, job_id, archive_ids)
+
+        task_archive_sizes = {
+            task_ids[i]: (archives[i]["uncompressed_size"], archives[i]["compressed_size"])
+            for i in range(len(archives))
+        }
 
         celery_task_group = celery.group(
             search.s(
@@ -266,17 +269,12 @@ class DispatchExecutor:
                 dataset=archives[i].get("dataset"),
                 clp_metadata_db_conn_params=DispatchExecutor._clp_metadata_db_conn_params,
                 results_cache_uri=DispatchExecutor._results_cache_uri,
-            ).set(
-                headers={
-                    QUERY_TASK_UNCOMPRESSED_SIZE_HEADER: archives[i]["uncompressed_size"],
-                    QUERY_TASK_COMPRESSED_SIZE_HEADER: archives[i]["compressed_size"],
-                }
             )
             for i in range(len(archives))
         )
         group_result = celery_task_group.apply_async()
         group_result.save()
-        return job_id, len(archives), group_result.id
+        return job_id, len(archives), group_result.id, task_archive_sizes
 
 
 class StreamExtractionHandle(ABC):
@@ -750,11 +748,6 @@ def get_task_group_for_job(
                 dataset=archives[i].get("dataset"),
                 clp_metadata_db_conn_params=clp_metadata_db_conn_params,
                 results_cache_uri=results_cache_uri,
-            ).set(
-                headers={
-                    QUERY_TASK_UNCOMPRESSED_SIZE_HEADER: archives[i]["uncompressed_size"],
-                    QUERY_TASK_COMPRESSED_SIZE_HEADER: archives[i]["compressed_size"],
-                }
             )
             for i in range(len(archives))
         )
@@ -786,6 +779,13 @@ def dispatch_query_job(
     global active_jobs
     archive_ids = [a["archive_id"] for a in archives]
     task_ids = insert_query_tasks_into_db(db_conn, job.id, archive_ids)
+
+    if isinstance(job, SearchJob):
+        for i, task_id in enumerate(task_ids):
+            job.task_archive_sizes[task_id] = (
+                archives[i]["uncompressed_size"],
+                archives[i]["compressed_size"],
+            )
 
     task_group = get_task_group_for_job(
         archives,
@@ -975,9 +975,12 @@ def handle_pending_query_jobs(
                 )
 
         for future in concurrent.futures.as_completed(futures):
-            job_id, num_archives_for_search, group_result_id = future.result()
+            job_id, num_archives_for_search, group_result_id, task_archive_sizes = (
+                future.result()
+            )
             job = active_jobs[job_id]
             with bound_contextvars(**_get_query_job_log_context_from_job(job)):
+                job.task_archive_sizes.update(task_archive_sizes)
                 job.current_sub_job_async_task_result = celery.result.GroupResult.restore(
                     group_result_id, app=app
                 )
@@ -1048,7 +1051,7 @@ async def handle_finished_search_job(
                 logger.error("Search task failed.")
             else:
                 tasks_completed_counter.add(1)
-                _record_search_bytes_scanned(task_result)
+                _record_search_bytes_scanned(task_id, job)
                 job.num_archives_searched += 1
                 logger.info("Search task succeeded in %s second(s).", task_result.duration)
 

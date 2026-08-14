@@ -33,12 +33,7 @@ from job_orchestration.executor.query.utils import (
 from job_orchestration.executor.utils import load_worker_config
 from job_orchestration.scheduler.constants import QueryJobType
 from job_orchestration.scheduler.job_config import SearchJobConfig
-from job_orchestration.scheduler.scheduler_data import (
-    QUERY_TASK_COMPRESSED_SIZE_HEADER,
-    QUERY_TASK_UNCOMPRESSED_SIZE_HEADER,
-    QueryTaskResult,
-    QueryTaskStatus,
-)
+from job_orchestration.scheduler.scheduler_data import QueryTaskResult, QueryTaskStatus
 
 # Setup logging
 logger = get_task_logger(__name__)
@@ -264,8 +259,6 @@ def search_entry_point(
     clp_metadata_db_conn_params: dict,
     results_cache_uri: str,
     dataset: str | None = None,
-    uncompressed_size: int | None = None,
-    compressed_size: int | None = None,
 ) -> dict[str, Any]:
     task_name = "search"
 
@@ -287,8 +280,6 @@ def search_entry_point(
             sql_adapter=sql_adapter,
             task_id=task_id,
             start_time=start_time,
-            uncompressed_size=uncompressed_size,
-            compressed_size=compressed_size,
         )
 
     # Make task_command
@@ -311,8 +302,6 @@ def search_entry_point(
             sql_adapter=sql_adapter,
             task_id=task_id,
             start_time=start_time,
-            uncompressed_size=uncompressed_size,
-            compressed_size=compressed_size,
         )
 
     task_results, _ = run_query_task(
@@ -325,8 +314,6 @@ def search_entry_point(
         job_id=job_id,
         task_id=task_id,
         start_time=start_time,
-        uncompressed_size=uncompressed_size,
-        compressed_size=compressed_size,
     )
 
     storage_config = worker_config.stream_output.storage
@@ -358,7 +345,6 @@ def search(
         **_get_search_task_log_context(job_id, task_id, job_config_blob, archive_id, dataset)
     ):
         try:
-            headers = self.request.headers or {}
             return search_entry_point(
                 job_id,
                 task_id,
@@ -366,9 +352,7 @@ def search(
                 archive_id,
                 clp_metadata_db_conn_params,
                 results_cache_uri,
-                dataset=dataset,
-                uncompressed_size=headers.get(QUERY_TASK_UNCOMPRESSED_SIZE_HEADER),
-                compressed_size=headers.get(QUERY_TASK_COMPRESSED_SIZE_HEADER),
+                dataset,
             )
         except SoftTimeLimitExceeded:
             logger.exception("Search task exceeded soft time limit.")
